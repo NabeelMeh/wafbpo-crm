@@ -1,2 +1,2 @@
-# wafbpo-crm
-Production-ready CRM application for WAFBPO SOLUTIONS with authentication, lead management, QA workflows, and department-based permissions
+# cloudnestbpo-crm
+A professional CRM platform for Cloud Nest BPO, featuring secure authentication, lead management, quality assurance workflows, and department-based permissions.

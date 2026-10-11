@@ -1,0 +1,23 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadVersioning",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetBucketVersioning"
+      ],
+      "Resource": "arn:aws:s3:::YOUR_PRIVATE_BUCKET"
+    },
+    {
+      "Sid": "ApplicationVersionedFiles",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:GetObjectVersion"
+      ],
+      "Resource": "arn:aws:s3:::YOUR_PRIVATE_BUCKET/leads/*"
+    }
+  ]
+}

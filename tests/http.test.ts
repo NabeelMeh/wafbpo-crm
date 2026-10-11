@@ -1,0 +1,18 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { csrf, body, decodeCursor, encodeCursor, pageLimit, json } from "../src/lib/http.ts";
+process.env.APP_URL = "https://crm.example.test";
+const write = (origin: string, extra: Record<string, string> = {}) => new Request("https://crm.example.test/api/leads", { method: "POST", headers: { Origin: origin, ...extra } });
+test("Mutating API requests reject a foreign origin", () => assert.throws(() => csrf(write("https://attacker.example"))));
+test("Mutating API requests reject missing Origin", () => assert.throws(() => csrf(new Request("https://crm.example.test/api/leads", { method: "POST" }))));
+test("Same-origin write requests pass CSRF checks", () => assert.doesNotThrow(() => csrf(write("https://crm.example.test"))));
+test("Cross-site fetch metadata cannot override same-origin validation", () => assert.throws(() => csrf(write("https://crm.example.test", { "sec-fetch-site": "cross-site" }))));
+test("Read-only requests do not require Origin", () => assert.doesNotThrow(() => csrf(new Request("https://crm.example.test/api/leads"))));
+test("Cursor round-trip preserves timestamp and unique tie-breaker", () => { const cursor = { at: "2026-09-21T00:00:00Z", id: "id-1" }; assert.deepEqual(decodeCursor(encodeCursor(cursor)), cursor); });
+test("Cursor objects cannot smuggle MongoDB operators", () => assert.throws(() => decodeCursor(encodeCursor({ id: { $ne: null } }))));
+test("Oversized cursors are rejected", () => assert.throws(() => decodeCursor("a".repeat(1001))));
+test("Pagination limits are clamped and integral", () => { assert.equal(pageLimit(new URL("https://test/?limit=9999")), 100); assert.equal(pageLimit(new URL("https://test/?limit=2.8")), 2); assert.equal(pageLimit(new URL("https://test/?limit=-1")), 1); });
+test("JSON body parser accepts a valid bounded body", async () => assert.deepEqual(await body(new Request("https://test/", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"x":1}' })), { x: 1 }));
+test("JSON body parser rejects oversized bodies", async () => assert.rejects(body(new Request("https://test/", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"value":"too large"}' }), 5)));
+test("JSON body parser rejects invalid JSON", async () => assert.rejects(body(new Request("https://test/", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{bad json}' }))));
+test("JSON responses disable shared and browser caching", () => assert.equal(json({ ok: true }).headers.get("Cache-Control"), "no-store, private"));

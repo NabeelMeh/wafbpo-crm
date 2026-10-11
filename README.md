@@ -1,81 +1,92 @@
-# WAFBPO SOLUTIONS CRM
+# Cloud Nest BPO CRM
 
-**Version 0.1.0 | Source-code foundation | Prepared 21 September 2026**
+**Version 0.3.0-rc.1 - updated source release candidate - 8 October 2026**
 
-A database-backed CRM built from the supplied WAFBPO SOLUTIONS master specification. This repository contains a Next.js application, API implementation, MongoDB services, role/workflow rules, operational scripts and automated tests. It is **not a deployed or production-certified system**. It contains no demo credentials, real patient data or fabricated dashboard values.
+## Readiness: NOT a verified production release
 
-## Workflow preserved
+This ZIP contains the actual updated application source, not only a patch or test report. It is an in-place continuation of the existing Next.js / React / TypeScript / MongoDB CRM. It contains no production credentials or patient records.
 
-Navigation order: **Generation -> Q/A -> Chasing -> Patient Verification -> Management**.
+**191 core and regression tests pass.** The dependency-free core TypeScript check and source syntax/internal-import checks also pass. The full application typecheck/build has NOT passed: application dependencies are unavailable in the authoring environment. MongoDB integration, browser workflows, SMTP delivery, S3 access and ClamAV scanning have NOT been executed here. Do not use real patient data until the release gates in `docs/PRODUCTION_ACCEPTANCE.md` pass in your environment.
 
-Operational pipeline: **Generation agent -> Generation Head -> Q/A -> Chasing -> Management**. Patient Verification is a separate, Management-controlled route. QA BAD returns to the original Generation agent. Resubmission after a QA return goes back to Q/A; a Generation Head return goes back to that Head. Head-only completion preserves the assigned agent's attribution.
+There is no verified dependency lockfile. Install and resolve dependencies, audit them, commit the generated lockfile, and use `npm ci` for subsequent deployments. Do not treat a ZIP filename, unit-test count, or the word "candidate" as production approval.
 
-## What is implemented
+## Required routing implemented in the source
 
-- Responsive workspace with department queues, dashboard, lead editor, activity/history views, notifications, live team status, user administration, imports, reports and security settings.
-- MongoDB-backed API authorization on reads, writes, exports and workflow actions; multiple department memberships, head/agent hierarchy, account locking/deactivation and session revocation.
-- Permanent lead IDs, draft autosave, required-field validation, duplicate checks, QA GOOD/BAD, rework, bulk assignment, calls, fax history, verification results, completion, finalization, reopening and archival.
-- Encrypted patient payloads and audit/activity contents, keyed search/duplicate indexes, masked identifiers, audited reveal, secure sessions, password hashing, TOTP MFA and recovery codes.
-- Durable notifications, server-side atomic alert claiming, grouped bulk notifications, an opt-in buzzer, private Ably realtime hints, and authenticated polling fallback.
-- Private version-pinned S3 PDF/audio uploads, quarantine, a ClamAV worker, permission-checked expiring download/preview URLs, and no historical-file delete API.
-- CSV/XLSX mapping, preview, validation, resumable bounded imports, error reports, server-side cursor pagination, indexed prefix search and bounded CSV/XLSX export.
+```text
+Generation submits/resubmits -> Q/A
+Q/A GOOD -> Chasing
+Q/A BAD -> original Generation agent for correction -> Q/A
+Chasing COMPLETE -> Management
+Chasing DENIED -> Patient Verification -> COMPLETE -> Management
+```
 
-## Start locally
+Direct Patient Verification creation/import and arbitrary manual department routing are rejected. Reopening derives the destination from recorded provenance. Existing permanent lead IDs are preserved; new lead codes use the CNB prefix. Q/A colleagues can view shared work, but only the holder of a live five-minute claim can mutate it. Claims, transitions and lead edits use version/concurrency controls.
 
-Use **Node.js 22** and an Atlas cluster or MongoDB replica set. A standalone MongoDB server is insufficient because business writes use transactions.
+## Included source
+
+- Existing workspace, dashboards, queues, lead editor, activities, audits, imports, reports, notifications, MFA and user management.
+- Cloud Nest branding, Management/Admin logo upload/preview/save/remove, and server-only security-email settings.
+- Enrolled / Not Enrolled account enforcement and session invalidation; special ID, designation and deletion grants.
+- Staff/Head new-device email challenges, expiring single-use codes, trusted-device records and administrative revocation.
+- Management/Admin-only lead CSV/XLSX exports, including full authorized identifiers, history, activity and attachment metadata. Continued exports use explicit next-page controls.
+- Advanced Medicare/member exact matching and username/special-ID searches within authorized row scope.
+- Multiple private business-document/image/audio uploads, immutable S3 versions, quarantine, a separate ClamAV worker and authenticated downloads.
+- Confirmed lead/file deletion with audit retention and a separate physical-storage purge worker.
+- Monthly department-arrival statistics and Management/Admin security activity.
+- Additive migration, environment templates, operational worker templates and test evidence.
+
+These are source-level implementations, not claims that their live integrations have passed.
+
+## Existing installation: preserve your data
+
+**Do not regenerate `DATA_ENCRYPTION_KEY` or `SEARCH_HMAC_KEY`, rename the database, or run the initial-admin bootstrap over an existing installation.** Keep existing user/lead identifiers. Take a restorable database/storage backup and test migration on a copy first. Existing internal collection/channel/cookie identifiers are retained where needed for compatibility.
+
+Read `docs/SETUP.md` before running commands. The migration defaults to a dry run and requires an explicit backup acknowledgement before writes.
+
+## New isolated installation
+
+Use Node.js 22.16+ within the package engine range and a transaction-capable MongoDB replica set/Atlas database. From this directory:
 
 ```sh
 npm install
 cp .env.example .env.local
+# For a NEW EMPTY database only:
 npm run secrets:generate
-```
-
-Paste the generated keys into `.env.local`, then configure `MONGODB_URI`, `MONGODB_DB`, `APP_URL`, and the temporary first-administrator variables. `cp` also works as an alias in PowerShell; alternatively use `Copy-Item .env.example .env.local`.
-
-```sh
+# Paste the generated keys and configure MongoDB, APP_URL and service credentials.
 npm run env:check
 npm run db:indexes
 npm run db:admin
+npm run db:migrate
+# After backup acknowledgement and review, see SETUP.md for applying migration.
 npm run dev
 ```
 
-Open `http://localhost:3000` and sign in using the administrator credentials **you configured**. There is no default password. Remove the bootstrap password from the environment after creating the administrator. Create department Heads before Agents, then enable the buzzer from the workspace header.
+PowerShell: use `Copy-Item .env.example .env.local`. There is no default admin password. New Agent/Head device logins fail closed until SMTP is configured. Uploads fail closed until a valid scanner heartbeat and versioned private storage are available.
 
-Without an Ably key, notifications use polling. Without S3 and a working scanner, files cannot be uploaded or released from quarantine. These integrations never silently return fake success.
-
-## Validation performed in the authoring environment
-
-**118 automated unit/domain/HTTP tests passed; zero failed or skipped.** The dependency-free domain/security modules also passed a strict TypeScript semantic check using the available compiler. The repository's TypeScript/TSX files passed syntax/transpilation and internal-import checks.
-
-The authoring environment could not resolve the npm registry. Therefore **dependencies were not installed, a lockfile was not generated, and the complete Next.js typecheck/build and browser tests were not run**. MongoDB, S3, Ably, scanner and Vercel integration tests were not run without provisioned services. An opt-in isolated-database integration suite is supplied, not represented as executed.
-
-After installation, run:
+## Run checks after dependency installation
 
 ```sh
-npm run typecheck
 npm test
+npm run test:types
+npm run typecheck
 npm run build
+npm audit --omit=dev --audit-level=high
+# Configure an isolated empty test database first:
+npm run test:integration
 ```
 
-Resolve dependency/API compatibility errors, review `npm audit`, commit the generated `package-lock.json`, then use `npm ci` for reproducible deployments. Do not treat this archive as a passed production build.
+`npm run release:check` runs unit tests, the full typecheck and build, but does not substitute for browser, infrastructure, privacy, restoration or load testing.
 
-## Scope boundaries
+## Documentation
 
-This is a substantial first implementation, **not every final acceptance criterion from the master prompt**. The current grid is paginated and scrollable, not virtualized. Interactive imports are limited to 5 MB / 5,000 rows, in 25-row server batches. Exports are capped at 1,000 records per request. Million-record load testing, unattended large-file import/export jobs, full reporting-metric parity, an operational backup/restore program, monitoring integration and a security review remain production gates.
+- `docs/SETUP.md`: installation, existing-database migration and first use.
+- `docs/DEPLOYMENT.md`: Vercel, SMTP, private storage, scanner/purge workers, rollout.
+- `docs/PRODUCTION_ACCEPTANCE.md`: release-blocking acceptance checklist.
+- `docs/FEATURE_STATUS.md`: supported behavior and explicit limits.
+- `docs/SECURITY.md`: trust boundaries, handling sensitive data, residual risks.
+- `docs/API.md`: protected endpoint contract.
+- `docs/TEST_RESULTS.md` and `verification/`: checks actually run for this source snapshot.
+- `docs/history/`: older documentation, NOT current instructions.
+- `docs/ORIGINAL_REQUIREMENTS.txt`: preserved historical WAFBPO requirements; the newer Cloud Nest routing supersedes conflicting sections.
 
-See [feature status](docs/FEATURE_STATUS.md) for the exact implemented/pending distinction; [setup](docs/SETUP.md), [deployment](docs/DEPLOYMENT.md), [security](docs/SECURITY.md), [API](docs/API.md), and [verification results](docs/TEST_RESULTS.md) for implementation details.
-
-## Repository layout
-
-```text
-src/app/                 Next.js pages and catch-all API route
-src/components/          Workspace, editor, workflow dialogs, alerts and grids
-src/lib/domain/          Shared types, permission rules, validation, state machine
-src/lib/                 MongoDB, auth, encryption, leads, storage, reports, imports
-scripts/                 Index migration, first admin, env checks, secrets, scanner
-tests/                   Unit tests and opt-in isolated MongoDB integration suite
-docs/                    Setup, deployment, API, security, status, original source
-.github/workflows/       Install, typecheck, unit test, build and dependency-audit CI
-```
-
-The original user specification is retained in `docs/ORIGINAL_REQUIREMENTS.txt`. Product choices and scope limits are recorded separately rather than silently modifying that source.
+No live database, cloud deployment, SMTP mailbox, storage bucket, or scanner host was changed by preparing this ZIP.

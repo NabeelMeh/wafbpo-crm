@@ -5,6 +5,7 @@ import { ACCOUNT_STATUSES, DEPARTMENTS } from "./domain/types.ts";
 import { assert } from "./domain/errors.ts";
 import { record, text, onlyKeys, passwordPolicy } from "./domain/validation.ts";
 import { isManagement, isHead, canSeeTeam, canAssignTo } from "./domain/policy.ts";
+import { userSearchTokens } from "./search.ts";
 import { hashPassword, blind } from "./crypto.ts";
 import { audit } from "./audit.ts";
 import { idempotent } from "./leads.ts";
@@ -26,20 +27,22 @@ async function validateHeads(memberships: Membership[], selfId: string) {
     for (const m of memberships)
         if (m.kind === "AGENT") {
             assert(m.headId && m.headId !== selfId, 400, "HEAD_REQUIRED", "Every agent membership needs a different department head.");
-            const head = await c.users.findOne({ _id: m.headId, accountStatus: "ACTIVE", memberships: { $elemMatch: { department: m.department, kind: "HEAD" } } });
+            const head = await c.users.findOne({ _id: m.headId, accountStatus: "ACTIVE", enrollmentStatus: { $ne: "NOT_ENROLLED" }, memberships: { $elemMatch: { department: m.department, kind: "HEAD" } } });
             assert(head, 400, "INVALID_HEAD", "The selected head must be active in that department.");
         }
 }
 export async function saveUser(u: Actor, id: string | null, raw: unknown, key: string | null) {
     assert(isManagement(u), 403, "FORBIDDEN", "Management access is required.");
     const r = record(raw);
-    onlyKeys(r, ["name", "username", "employeeId", "role", "memberships", "accountStatus", "password"]);
+    onlyKeys(r, ["name", "username", "employeeId", "role", "memberships", "accountStatus", "enrollmentStatus", "password", "designation", "deletionGranted"]);
     const role = text(r.role, "Role", 30, true) as GlobalRole;
-    assert(["SUPER_ADMIN", "MANAGEMENT", "STAFF"].includes(role), 400, "INVALID_ROLE", "Invalid role.");
-    assert(u.role === "SUPER_ADMIN" || role !== "SUPER_ADMIN", 403, "FORBIDDEN", "Only a Super Admin may create or grant Super Admin access.");
+    assert(["SUPER_ADMIN", "ADMIN", "MANAGEMENT", "STAFF"].includes(role), 400, "INVALID_ROLE", "Invalid role.");
+    assert(["SUPER_ADMIN","ADMIN"].includes(u.role) || !["SUPER_ADMIN","ADMIN"].includes(role), 403, "FORBIDDEN", "Only a Super Admin may create or grant Super Admin access.");
     const memberships = parseMemberships(r.memberships || []);
     assert(role !== "STAFF" || memberships.length, 400, "DEPARTMENT_REQUIRED", "Staff need a department membership.");
     const status = text(r.accountStatus || "ACTIVE", "Account status", 20) as AccountStatus;
+    const enrollmentStatus = text(r.enrollmentStatus || "ENROLLED", "Enrollment status", 20) as "ENROLLED" | "NOT_ENROLLED";
+    assert(["ENROLLED", "NOT_ENROLLED"].includes(enrollmentStatus), 400, "INVALID_ENROLLMENT", "Invalid enrollment status.");
     assert(ACCOUNT_STATUSES.includes(status), 400, "INVALID_STATUS", "Invalid account status.");
     const name = text(r.name, "Name", 100, true), username = text(r.username, "Username", 60, true).toLowerCase(), employeeId = text(r.employeeId, "Employee ID", 50, true);
     assert(/^[a-z0-9._-]{3,60}$/.test(username), 400, "INVALID_USERNAME", "Username must be 3-60 letters, digits, dots, underscores or hyphens.");
@@ -50,29 +53,33 @@ export async function saveUser(u: Actor, id: string | null, raw: unknown, key: s
         passwordHash = await hashPassword(r.password);
     }
     assert(id || passwordHash, 400, "PASSWORD_REQUIRED", "A temporary password is required.");
+    const designation = text(r.designation || (role === "STAFF" ? (memberships.some(m=>m.kind==="HEAD") ? "Department Head" : "Agent") : role), "Designation", 100, true);
+    assert(r.deletionGranted===undefined||typeof r.deletionGranted==="boolean",400,"INVALID_INPUT","Deletion grant must be a boolean.");
+    const deletionGranted=r.deletionGranted===true;
     const targetId = id || randomUUID();
     await validateHeads(memberships, targetId);
     // Use a stable keyed fingerprint, not a randomly salted password hash, for safe retries.
-    return idempotent(u, key, { targetId: id, role, memberships, status, name, username, employeeId, passwordFingerprint: passwordHash ? blind(`password-request:${r.password}`) : undefined }, async (s) => {
+    return idempotent(u, key, { targetId: id, role, memberships, status, enrollmentStatus, name, username, employeeId, designation, deletionGranted, passwordFingerprint: passwordHash ? blind(`password-request:${r.password}`) : undefined }, async (s) => {
         const c = await collections(), old = id ? await c.users.findOne({ _id: id }, { session: s }) : null;
         if (id)
             assert(old, 404, "NOT_FOUND", "User not found.");
-        assert(u.role === "SUPER_ADMIN" || old?.role !== "SUPER_ADMIN", 403, "FORBIDDEN", "Only a Super Admin may edit a Super Admin account.");
-        if (old?.role === "SUPER_ADMIN") {
+        assert(["SUPER_ADMIN","ADMIN"].includes(u.role) || !["SUPER_ADMIN","ADMIN"].includes(old?.role || ""), 403, "FORBIDDEN", "Only a Super Admin may edit a Super Admin account.");
+        if (old && ["SUPER_ADMIN","ADMIN"].includes(old.role)) {
             await c.duplicateGuards.updateOne({ _id: "administration:superadmin-lock" }, { $inc: { version: 1 } }, { upsert: true, session: s });
-            if (role !== "SUPER_ADMIN" || status !== "ACTIVE")
-                assert(await c.users.countDocuments({ role: "SUPER_ADMIN", accountStatus: "ACTIVE", _id: { $ne: targetId } }, { session: s }) > 0, 409, "LAST_ADMIN", "The last active Super Admin cannot be deactivated or demoted.");
+            if (!["SUPER_ADMIN","ADMIN"].includes(role) || status !== "ACTIVE" || enrollmentStatus !== "ENROLLED")
+                assert(await c.users.countDocuments({ role: { $in: ["SUPER_ADMIN","ADMIN"] }, accountStatus: "ACTIVE", enrollmentStatus: { $ne: "NOT_ENROLLED" }, _id: { $ne: targetId } }, { session: s }) > 0, 409, "LAST_ADMIN", "The last active Super Admin cannot be deactivated or demoted.");
         }
         assert(!(targetId === u.id && passwordHash), 400, "OWN_PASSWORD", "Change your own password in Security.");
-        const conflict = await c.users.findOne({ _id: { $ne: targetId }, $or: [{ username }, { employeeId }] }, { session: s });
+        const conflict = await c.users.findOne({ _id: { $ne: targetId }, $or: [{ username }, { employeeId }, { employeeIdNormalized: employeeId.toLowerCase() }, {username:employeeId.toLowerCase()}, {employeeIdNormalized:username}] }, { session: s });
         assert(!conflict, 409, "USER_EXISTS", "Username or employee ID is already in use.");
         const now = new Date().toISOString();
-        const next: UserDoc = { ...(old || {}), _id: targetId, name, username, employeeId, role, memberships, accountStatus: status, passwordHash: passwordHash || old!.passwordHash,
+        const next: UserDoc = { ...(old || {}), _id: targetId, name, username, employeeId, employeeIdNormalized: employeeId.toLowerCase(), designation, deletionGranted, searchTokens: userSearchTokens(name, username, employeeId), role, memberships, accountStatus: status, enrollmentStatus, passwordHash: passwordHash || old!.passwordHash,
             mustChangePassword: passwordHash ? true : old?.mustChangePassword || false, mfaEnabled: old?.mfaEnabled || false, sessionVersion: (old?.sessionVersion || 0) + (old ? 1 : 0), createdAt: old?.createdAt || now, updatedAt: now };
         if (old)
             await c.users.replaceOne({ _id: targetId }, next, { session: s });
         else
             await c.users.insertOne(next, { session: s });
+        if(old){await c.sessions.deleteMany({userId:targetId},{session:s});await c.deviceChallenges.deleteMany({userId:targetId},{session:s});}
         await audit(u, old ? "USER_UPDATED" : "USER_CREATED", { userId: targetId, before: old ? actor(old) : null, after: actor(next), passwordReset: !!passwordHash }, undefined, s);
         const notify = await notifyTeamChange(next, u, s);
         return { data: actor(next), notify };
@@ -81,7 +88,7 @@ export async function saveUser(u: Actor, id: string | null, raw: unknown, key: s
 export async function listUsers(u: Actor) {
     assert(isManagement(u), 403, "FORBIDDEN", "Management access is required.");
     const rows = await (await collections()).users.find({}).sort({ name: 1, _id: 1 }).limit(500).toArray();
-    return { items: rows.map(actor), limit: 500 };
+    return { items: rows.map(v=>({...actor(v),createdAt:v.createdAt,lastLoginAt:v.lastLoginAt})), limit: 500 };
 }
 export async function assignees(u: Actor, department: string) {
     assert(DEPARTMENTS.includes(department as never) && department !== "MANAGEMENT", 400, "INVALID_DEPARTMENT", "Invalid work department.");
@@ -94,5 +101,5 @@ export async function team(u: Actor, url: URL) {
     const c = await collections(), after = url.searchParams.get("after");
     const users = await c.users.find(after ? { _id: { $gt: after } } : {}).sort({ _id: 1 }).limit(101).toArray(), items = users.slice(0, 100), now = Date.now();
     return { items: items.map(v => ({ ...actor(v), lastLoginAt: v.lastLoginAt, lastActivityAt: v.lastActivityAt,
-            presence: v.accountStatus !== "ACTIVE" ? "INACTIVE" : !v.lastSeenAt || now - Date.parse(v.lastSeenAt) > 90000 ? "OFFLINE" : v.visible === false || !v.lastActivityAt || now - Date.parse(v.lastActivityAt) > 300000 ? "AWAY" : "ONLINE" })), nextAfter: users.length > 100 ? items.at(-1)!._id : null };
+            presence: (v.accountStatus !== "ACTIVE" || v.enrollmentStatus === "NOT_ENROLLED") ? "INACTIVE" : !v.lastSeenAt || now - Date.parse(v.lastSeenAt) > 90000 ? "OFFLINE" : v.visible === false || !v.lastActivityAt || now - Date.parse(v.lastActivityAt) > 300000 ? "AWAY" : "ONLINE" })), nextAfter: users.length > 100 ? items.at(-1)!._id : null };
 }

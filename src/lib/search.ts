@@ -33,3 +33,6 @@ export function searchTokens(p: Patient, d: Doctor, code: string, campaign: stri
 export function queryToken(s: string) { const n = normalize(s); return n.length >= 2 ? blind(`search:${n}`) : null; }
 export function mask(value: string): string { return value ? `****${value.slice(-4)}` : ""; }
 export function csvSafe(value: unknown): string { const s = String(value ?? ""); return /^[\s]*[=+@\-\t\r]/.test(s) ? "'" + s : s; }
+
+export function identifierSearchKeys(p:Patient):string[] {return [p.identifier ? blind(`identifier-search:${normalize(p.identifier)}`) : '',p.memberId ? blind(`member-search:${normalize(p.memberId)}`) : ''].filter(Boolean);}
+export function userSearchTokens(name:string,username:string,specialId:string):string[]{const out=new Set<string>();for(const value of [name,username,specialId,...name.split(/\s+/)]){const n=normalize(value);for(let i=2;i<=Math.min(n.length,60);i++)out.add(blind(`user-search:${n.slice(0,i)}`));}return [...out];}

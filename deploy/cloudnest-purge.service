@@ -1,0 +1,19 @@
+[Unit]
+Description=Cloud Nest authorized private-file purge
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=cloudnest-purge
+Group=cloudnest-purge
+# Use a separate worker copy/secret environment with destructive storage permissions.
+WorkingDirectory=/opt/cloud-nest-purge
+Environment=NODE_ENV=production
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/npm run worker:purge
+TimeoutStartSec=600
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077

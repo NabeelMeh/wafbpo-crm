@@ -1,6 +1,6 @@
 {
-  "name": "wafbpo-solutions-crm",
-  "version": "0.1.0",
+  "name": "cloud-nest-bpo-crm",
+  "version": "0.3.0-rc.1",
   "private": true,
   "engines": {
     "node": ">=22.16.0 <25"
@@ -17,10 +17,15 @@
     "worker:scan": "tsx --env-file=.env.local scripts/scan-files.ts",
     "secrets:generate": "node scripts/generate-secrets.mjs",
     "env:check": "node --env-file=.env.local scripts/check-env.mjs",
-    "test:types": "tsc -p tsconfig.core.json"
+    "test:types": "tsc -p tsconfig.core.json",
+    "db:migrate": "tsx --env-file=.env.local scripts/migrate-cloudnest.ts",
+    "worker:purge": "tsx --env-file=.env.local scripts/purge-files.ts",
+    "release:check": "npm run test && npm run typecheck && npm run build",
+    "env:check:production": "node --env-file=.env.local scripts/check-env.mjs --production",
+    "check:source": "node scripts/check-source.cjs"
   },
   "dependencies": {
-    "next": "^16.3.3",
+    "next": "^16.3.8",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "mongodb": "^6.20.0",
@@ -30,7 +35,8 @@
     "@aws-sdk/s3-presigned-post": "^3.922.0",
     "@aws-sdk/s3-request-presigner": "^3.922.0",
     "exceljs": "^4.4.0",
-    "papaparse": "^5.5.3"
+    "papaparse": "^5.5.3",
+    "nodemailer": "^7.0.11"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
@@ -40,7 +46,8 @@
     "@types/papaparse": "^5.3.16",
     "tsx": "^4.20.0",
     "tailwindcss": "^4.1.0",
-    "@tailwindcss/postcss": "^4.1.0"
+    "@tailwindcss/postcss": "^4.1.0",
+    "@types/nodemailer": "^7.0.4"
   },
   "type": "module"
 }

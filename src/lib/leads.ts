@@ -8,13 +8,13 @@ import { assertRead, assertCreate, assertEdit, isManagement, isHead, canReveal, 
 import { record, text, onlyKeys, parsePatient, parseDoctor, partialPatient, partialDoctor, validateLead, parseWorkflow, parseActivity } from "./domain/validation.ts";
 import { transition } from "./domain/workflow.ts";
 import { seal, unseal, blind } from "./crypto.ts";
-import { duplicateKeys, searchTokens, queryToken, mask } from "./search.ts";
+import { duplicateKeys, searchTokens, queryToken, mask, identifierSearchKeys, normalize } from "./search.ts";
 import { audit, eventView } from "./audit.ts";
 import { recipientIds, insertNotifications, publishHint } from "./notifications.ts";
 import { encodeCursor, decodeCursor, pageLimit } from "./http.ts";
 export const patientOf = (lead: LeadDoc) => unseal<Patient>(lead.patientSealed, `patient:${lead._id}`);
 export function leadView(lead: LeadDoc): LeadView {
-    const { patientSealed, searchTokens: tokens, duplicateKeys: dups, ...rest } = lead;
+    const { patientSealed, searchTokens: tokens, duplicateKeys: dups, identifierSearchKeys: identifierKeys, ...rest } = lead;
     const p = patientOf(lead);
     return { ...rest, patient: { ...p, identifier: mask(p.identifier), memberId: mask(p.memberId) }, identifiersMasked: true };
 }
@@ -95,10 +95,10 @@ export async function createLeadCore(u: Actor, raw: unknown, s: ClientSession, q
     const override = text(r.duplicateOverrideReason, "Duplicate override reason", 2000), dup = await checkDuplicates(u, p, id, override, s);
     const counter = await c.counters.findOneAndUpdate({ _id: `lead:${now.getUTCFullYear()}` }, { $inc: { seq: 1 } }, { upsert: true, returnDocument: "after", session: s });
     assert(counter, 500, "SEQUENCE_FAILED", "Unable to allocate lead ID.");
-    const code = `WAF-${now.getUTCFullYear()}-${String(counter.seq).padStart(6, "0")}`;
+    const code = `CNB-${now.getUTCFullYear()}-${String(counter.seq).padStart(6, "0")}`;
     const lead: LeadDoc = { _id: id, code, department: d, status: d === "GENERATION" ? "DRAFT" : d === "PV" ? "PV_ACTIVE" : "CHASING_ACTIVE", createdBy: u.id, assignedTo: d === "GENERATION" ? u.id : null, origin: d,
         version: 1, submissionVersion: 0, campaign, batch, createdAt: now.toISOString(), updatedAt: now.toISOString(), patientSealed: seal(p, `patient:${id}`), doctor,
-        duplicateKeys: dup.keys, searchTokens: searchTokens(p, doctor, code, campaign, batch), ...(d === "PV" ? { verificationStatus: "NOT_CONTACTED" as const } : {}) };
+        duplicateKeys: dup.keys, identifierSearchKeys: identifierSearchKeys(p), searchTokens: searchTokens(p, doctor, code, campaign, batch), ...(d === "PV" ? { verificationStatus: "NOT_CONTACTED" as const } : {}) };
     await c.leads.insertOne(lead, { session: s });
     const eventId = await audit(u, "CREATED", { department: d, status: lead.status, duplicateOverrideReason: dup.overridden ? override : undefined }, lead, s, u.id);
     const notify = d === "GENERATION" ? [] : await recipientIds(lead, s);
@@ -122,6 +122,7 @@ export async function editLead(u: Actor, id: string, raw: unknown, key: string |
     return idempotent(u, key, { id, raw }, async (s) => {
         const c = await collections(), lead = await getLead(u, id, s);
         assertEdit(u, lead, patch);
+        assert(canEditDoctor(u,lead),403,"FORBIDDEN","This record is not editable; claim Q/A work before editing.");
         assert(lead.version === r.version, 409, "VERSION_CONFLICT", "This record changed. Reload before saving.");
         if (r.campaign !== undefined || r.batch !== undefined)
             assert(isManagement(u), 403, "FORBIDDEN", "Management controls campaign and batch fields.");
@@ -223,7 +224,7 @@ export async function buildLeadFilter(u: Actor, url: URL): Promise<Filter<LeadDo
         assert(STATUSES.includes(status as never), 400, "INVALID_FILTER", "Invalid status.");
         parts.push({ status });
     }
-    else
+    else if (!(url.searchParams.get("includeArchived")==="1" && isManagement(u)))
         parts.push({ status: { $ne: "ARCHIVED" } });
     for (const key of ["assignedTo", "campaign", "batch"] as const) {
         const value = url.searchParams.get(key);
@@ -239,7 +240,15 @@ export async function buildLeadFilter(u: Actor, url: URL): Promise<Filter<LeadDo
         assert(q.length <= 100, 400, "INVALID_SEARCH", "Search is too long.");
         const token = queryToken(q);
         assert(token, 400, "INVALID_SEARCH", "Enter at least two letters or digits.");
-        parts.push({ searchTokens: token });
+        const mode=url.searchParams.get("searchMode")||"all";
+        assert(["all","medicare","member","username","specialId"].includes(mode),400,"INVALID_SEARCH","Invalid search mode.");
+        assert(mode==="all"||isManagement(u)||isHead(u),403,"FORBIDDEN","Advanced identity search is limited to Heads and Management.");
+        if(mode==="medicare"||mode==="member") parts.push({identifierSearchKeys:blind(`${mode==="member"?"member":"identifier"}-search:${normalize(q)}`)});
+        else {
+            const related=await (await collections()).users.find(mode==="specialId"?{employeeIdNormalized:q.toLowerCase()}:mode==="username"?{username:q.toLowerCase()}:{searchTokens:blind(`user-search:${normalize(q)}`)},{projection:{_id:1}}).limit(500).toArray();
+            const links=[{createdBy:{$in:related.map(x=>x._id)}},{assignedTo:{$in:related.map(x=>x._id)}},{completedAgentId:{$in:related.map(x=>x._id)}}];
+            parts.push({$or:mode==="all"?[{searchTokens:token},...links]:links});
+        }
     }
     const dates: Record<string, string> = {};
     for (const [query, operator] of [["from", "$gte"], ["to", "$lte"]]) {
@@ -285,7 +294,7 @@ function historyFilter(id: string, before: string | null): Record<string, unknow
 export async function leadHistory(u: Actor, id: string, url: URL) {
     const lead = await getLead(u, id), c = await collections();
     const rows = await c.events.find(historyFilter(id, url.searchParams.get("before"))).sort({ at: -1, _id: -1 }).limit(101).toArray(), items = rows.slice(0, 100), last = items.at(-1);
-    return { items: items.map(e => redactHistory(eventView(e, true))), nextBefore: rows.length > 100 && last ? encodeCursor({ at: last.at, id: last._id }) : null };
+    return { items: items.map(e => isManagement(u) ? eventView(e,true) : redactHistory(eventView(e, true))), nextBefore: rows.length > 100 && last ? encodeCursor({ at: last.at, id: last._id }) : null };
 }
 export async function leadActivities(u: Actor, id: string, url: URL) {
     await getLead(u, id);

@@ -2,13 +2,13 @@
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { collections, database, client, ensureIndexes, type UserDoc } from "../src/lib/db.ts";
-import { hashPassword } from "../src/lib/crypto.ts";
+import { hashPassword, blind } from "../src/lib/crypto.ts";
 import { handle } from "../src/lib/api.ts";
 import { EMPTY_PATIENT, EMPTY_DOCTOR } from "../src/lib/domain/types.ts";
 import type { LeadView, Action } from "../src/lib/domain/types.ts";
 const name = process.env.MONGODB_DB || "";
 assert(process.env.TEST_ALLOW_DB_WRITE === "true", "Set TEST_ALLOW_DB_WRITE=true to run this suite.");
-assert(/^wafbpo_[a-zA-Z0-9_]*test$/.test(name), "MONGODB_DB must begin wafbpo_ and end test.");
+assert(/^(?:wafbpo|cloudnest)_[a-zA-Z0-9_]*test$/.test(name), "MONGODB_DB must begin wafbpo_ or cloudnest_ and end test.");
 assert(process.env.NODE_ENV !== "production", "Do not run integration tests in production mode.");
 assert(process.env.MONGODB_URI, "Configure a replica-set test database in .env.test.");
 process.env.APP_URL = "http://localhost:3000";
@@ -24,7 +24,7 @@ async function call(method: string, path: string, payload?: unknown, cookie?: st
         headers.Cookie = cookie;
     const response = await handle(new Request(`${origin}/api/${path}`, { method, headers, ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}) }));
     const data = await response.json();
-    return { status: response.status, data, cookie: response.headers.get("set-cookie")?.split(";")[0] || "" };
+    return { status: response.status, data, cookie: response.headers.getSetCookie().map(x=>x.split(";")[0]).join("; ") };
 }
 async function ok(method: string, path: string, payload?: unknown, cookie?: string, key?: string) {
     const result = await call(method, path, payload, cookie, key);
@@ -43,13 +43,16 @@ try {
     for (const label of labels) {
         const department = label.startsWith("generation") ? "GENERATION" : label.startsWith("qa") ? "QA" : label.startsWith("chasing") ? "CHASING" : "PV";
         const head = label.endsWith("Head"), headLabel = label.replace(/Agent$/, "Head");
-        const user: UserDoc = { _id: randomUUID(), name: `Synthetic ${label}`, username: label.toLowerCase(), employeeId: label, role: label === "admin" ? "SUPER_ADMIN" : "STAFF", memberships: label === "admin" ? [] : [{ department, kind: head ? "HEAD" : "AGENT", ...(head ? {} : { headId: people.get(headLabel)!._id }) }], accountStatus: "ACTIVE", passwordHash: hash, sessionVersion: 0, mustChangePassword: false, mfaEnabled: false, createdAt: now, updatedAt: now };
+        const user: UserDoc = { _id: randomUUID(), name: `Synthetic ${label}`, username: label.toLowerCase(), employeeId: label, employeeIdNormalized: label.toLowerCase(), role: label === "admin" ? "SUPER_ADMIN" : "STAFF", memberships: label === "admin" ? [] : [{ department, kind: head ? "HEAD" : "AGENT", ...(head ? {} : { headId: people.get(headLabel)!._id }) }], accountStatus: "ACTIVE", enrollmentStatus: "ENROLLED", passwordHash: hash, sessionVersion: 0, mustChangePassword: false, mfaEnabled: false, createdAt: now, updatedAt: now };
         people.set(label, user);
         await c.users.insertOne(user);
     }
     const cookies = new Map<string, string>();
+    // Explicit trusted-device fixtures test normal login. This is not a test of SMTP delivery.
     for (const label of labels) {
-        const result = await ok("POST", "auth/login", { username: people.get(label)!.username, password: secret });
+        const token=randomBytes(32).toString("base64url"),person=people.get(label)!;
+        if(label!=="admin")await c.trustedDevices.insertOne({_id:randomUUID(),userId:person._id,deviceHash:blind(`device:${token}`),sessionVersion:person.sessionVersion,createdAt:now,lastUsedAt:now,expiresAt:new Date(Date.now()+86400000),userAgent:"Synthetic trusted-device fixture"});
+        const result = await ok("POST", "auth/login", { username: person.username, password: secret },`cloudnest_device=${token}`);
         cookies.set(label, result.cookie);
     }
     const auth = (label: string) => cookies.get(label)!;
@@ -73,21 +76,22 @@ try {
     assert.equal((await call("POST", "leads", { ...source, department: "MANAGEMENT" }, auth("admin"))).status, 400);
     checks++;
     const action = async (label: string, act: Action, extra: Record<string, unknown> = {}, idem?: string) => { lead = (await ok("POST", `leads/${lead._id}/workflow`, { action: act, version: lead.version, ...extra }, auth(label), idem)).data; };
-    await action("generationAgent", "SUBMIT");
-    const oldVersion = lead.version, approvalKey = randomUUID();
-    await action("generationHead", "APPROVE_GENERATION", {}, approvalKey);
-    const replay = await call("POST", `leads/${lead._id}/workflow`, { action: "APPROVE_GENERATION", version: oldVersion }, auth("generationHead"), approvalKey);
-    assert.equal(replay.status, 409);
-    assert.equal(replay.data.error.code, "ALREADY_APPLIED_ACCESS_CHANGED");
-    checks++;
+    const submitVersion=lead.version,submitKey=randomUUID();
+    await action("generationAgent", "SUBMIT",{},submitKey);
+    assert.equal(lead.department,"QA");checks++;
+    assert.equal((await call("POST",`leads/${lead._id}/workflow`,{action:"APPROVE_GENERATION",version:lead.version},auth("generationHead"))).status,404);checks++;
+    const replay=await call("POST",`leads/${lead._id}/workflow`,{action:"SUBMIT",version:submitVersion},auth("generationAgent"),submitKey);
+    assert.equal(replay.status,409);checks++;
     assert.equal((await call("GET", `leads/${lead._id}`, undefined, auth("generationAgent"))).status, 404);
     checks++;
     await action("qaHead", "ASSIGN", { assigneeId: people.get("qaAgent")!._id });
+    await action("qaAgent", "CLAIM");
     await action("qaAgent", "QA_BAD", { reason: "Synthetic review", comment: "Correct synthetic information" });
     assert.equal(lead.assignedTo, people.get("generationAgent")!._id);
     checks++;
     await action("generationAgent", "RESUBMIT");
     await action("qaHead", "ASSIGN", { assigneeId: people.get("qaAgent")!._id });
+    await action("qaAgent", "CLAIM");
     await action("qaAgent", "QA_GOOD");
     await action("chasingHead", "ASSIGN", { assigneeId: people.get("chasingAgent")!._id });
     assert.equal((await call("PATCH", `leads/${lead._id}`, { version: lead.version, patient: { brace: "Forbidden change" } }, auth("chasingAgent"))).status, 403);
@@ -102,7 +106,10 @@ try {
     assert.equal(lead.completedAgentId, people.get("chasingAgent")!._id);
     checks++;
     await action("admin", "FINALIZE");
-    await action("admin", "REOPEN", { reason: "Synthetic verification", comment: "Route separately to PV", destination: "PV" });
+    assert.equal((await call("POST",`leads/${lead._id}/workflow`,{action:"REOPEN",version:lead.version,reason:"Synthetic verification",comment:"Blocked incorrect route",destination:"PV"},auth("admin"))).status,400);checks++;
+    await action("admin", "REOPEN", { reason: "Synthetic verification", comment: "Automatic return to Chasing" });
+    await action("chasingHead", "DENY", { reason: "Needs Patient Verification" });
+    assert.equal(lead.department,"PV");checks++;
     await action("pvHead", "ASSIGN", { assigneeId: people.get("pvAgent")!._id });
     await ok("POST", `leads/${lead._id}/activities`, { kind: "VERIFICATION", data: { status: "VERIFIED", result: "Synthetic verification complete" } }, auth("pvAgent"));
     lead = (await ok("GET", `leads/${lead._id}`, undefined, auth("pvHead"))).data;
@@ -131,6 +138,13 @@ try {
     await ok("PATCH", `users/${agent._id}`, { name: agent.name, username: agent.username, employeeId: agent.employeeId, role: agent.role, memberships: agent.memberships, accountStatus: "INACTIVE" }, auth("admin"));
     assert.equal((await call("GET", "dashboard", undefined, auth("generationAgent"))).status, 401);
     checks++;
+    // Export and organization controls are independently enforced through the API.
+    for(const label of ["generationAgent","qaHead","chasingAgent"]){
+        assert.equal((await call("GET","settings/organization",undefined,auth(label))).status,label==="generationAgent"?401:403);checks++;
+        assert.equal((await call("GET","leads/export?format=csv",undefined,auth(label))).status,label==="generationAgent"?401:403);checks++;
+    }
+    assert.equal((await call("POST","leads",{...source,department:"PV"},auth("admin"))).status,400);checks++;
+    const brand=(await ok("GET","branding")).data;assert(!("securityEmail" in brand));checks++;
     console.log(`Integration checks passed: ${checks}. Synthetic test data only.`);
 }
 catch (error) {

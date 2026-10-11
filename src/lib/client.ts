@@ -13,7 +13,7 @@ export async function request<T>(path: string, options: {
     signal?: AbortSignal;
 } = {}): Promise<T> {
     const method = options.method || (options.body !== undefined ? "POST" : "GET");
-    const response = await fetch(`/api/${path}`, { method, credentials: "same-origin", cache: "no-store", signal: options.signal, headers: { ...(options.body !== undefined ? { "Content-Type": "application/json" } : {}), ...(options.activity ? { "X-User-Activity": "1" } : {}), ...(["POST", "PATCH"].includes(method) ? { "Idempotency-Key": options.key || crypto.randomUUID() } : {}) }, ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}) });
+    const response = await fetch(`/api/${path}`, { method, credentials: "same-origin", cache: "no-store", signal: options.signal, headers: { ...(options.body !== undefined ? { "Content-Type": "application/json" } : {}), ...(options.activity ? { "X-User-Activity": "1" } : {}), ...(["POST", "PATCH", "DELETE"].includes(method) ? { "Idempotency-Key": options.key || crypto.randomUUID() } : {}) }, ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}) });
     const data = await response.json().catch(() => ({ error: { message: "The server returned an invalid response." } }));
     if (!response.ok)
         throw new ApiError(data.error?.message || "Request failed.", response.status, data.error?.code || "REQUEST_FAILED", data.error?.details);

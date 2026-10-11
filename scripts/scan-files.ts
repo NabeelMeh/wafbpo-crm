@@ -1,9 +1,13 @@
 /** Run outside Vercel, with ClamAV installed and signatures updated. One bounded batch per invocation. */
-import { mkdtemp, open, rm } from "node:fs/promises";
+import { mkdtemp, open, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
+import { inspectFile } from "../src/lib/file-inspection.ts";
+import { execFileSync } from "node:child_process";
 type Item = {
+    name: string;
+    token: string;
     fileId: string;
     versionId: string;
     size: number;
@@ -22,24 +26,9 @@ async function api<T>(body?: unknown): Promise<T> {
         throw new Error(`Scanner endpoint returned HTTP ${response.status}.`);
     return await response.json() as T;
 }
-function matchesType(type: string, bytes: Buffer): boolean {
-    if (type === "application/pdf")
-        return bytes.subarray(0, 1024).includes(Buffer.from("%PDF-"));
-    if (type === "audio/mpeg")
-        return bytes.subarray(0, 3).toString() === "ID3" || (bytes[0] === 255 && (bytes[1] & 224) === 224);
-    if (type === "audio/wav" || type === "audio/x-wav")
-        return bytes.subarray(0, 4).toString() === "RIFF" && bytes.subarray(8, 12).toString() === "WAVE";
-    if (type === "audio/mp4")
-        return bytes.subarray(4, 8).toString() === "ftyp";
-    if (type === "audio/ogg")
-        return bytes.subarray(0, 4).toString() === "OggS";
-    if (type === "audio/webm")
-        return bytes.subarray(0, 4).toString("hex") === "1a45dfa3";
-    return false;
-}
 function scan(path: string): Promise<boolean> {
     return new Promise((resolve, reject) => {
-        const child = spawn(process.env.CLAMSCAN_PATH || "clamscan", ["--no-summary", path], { stdio: "ignore", windowsHide: true });
+        const child = spawn(process.env.CLAMSCAN_PATH || "clamscan", ["--no-summary", "--alert-macros=yes", "--alert-encrypted=yes", "--max-filesize=110M", "--max-scansize=150M", "--max-recursion=12", "--max-files=2000", path], { stdio: "ignore", windowsHide: true });
         const timer = setTimeout(() => { child.kill(); reject(new Error("ClamAV scan timed out; item remains quarantined.")); }, 120000);
         child.once("error", () => { clearTimeout(timer); reject(new Error("ClamAV could not start; item remains quarantined.")); });
         child.once("exit", code => {
@@ -56,7 +45,7 @@ function scan(path: string): Promise<boolean> {
 async function processItem(item: Item): Promise<boolean> {
     if (!item.versionId || !Number.isInteger(item.size) || item.size <= 0 || item.size > 100 * 1024 * 1024)
         throw new Error("Invalid scanner queue metadata.");
-    const dir = await mkdtemp(join(tmpdir(), "waf-scan-")), path = join(dir, "upload.bin");
+    const dir = await mkdtemp(join(tmpdir(), "cloudnest-scan-")), path = join(dir, "upload.bin");
     try {
         const response = await fetch(item.url, { signal: AbortSignal.timeout(180000), redirect: "error" });
         if (!response.ok || !response.body)
@@ -83,13 +72,16 @@ async function processItem(item: Item): Promise<boolean> {
         }
         if (size !== item.size)
             throw new Error("Downloaded object size did not match the immutable metadata.");
-        return matchesType(item.type, head) && await scan(path);
+        return inspectFile(item.name, item.type, await readFile(path)) && await scan(path);
     }
     finally {
         await rm(dir, { recursive: true, force: true });
     }
 }
 try {
+    const version=execFileSync(process.env.CLAMSCAN_PATH || "clamscan",["--version"],{encoding:"utf8",timeout:10000}).trim();
+    const signatureDate=Date.parse(version.split("/").slice(2).join("/"));
+    if(!Number.isFinite(signatureDate)||Date.now()-signatureDate>Number(process.env.CLAMAV_MAX_SIGNATURE_AGE_HOURS||48)*3600000)throw new Error("ClamAV signatures are missing or stale. Run freshclam before accepting uploads.");
     const { items } = await api<{
         items: Item[];
     }>();
@@ -97,7 +89,7 @@ try {
     for (const item of items) {
         try {
             const clean = await processItem(item);
-            await api({ fileId: item.fileId, versionId: item.versionId, clean });
+            await api({ fileId: item.fileId, versionId: item.versionId, token: item.token, clean });
             if (clean)
                 passed++;
             else

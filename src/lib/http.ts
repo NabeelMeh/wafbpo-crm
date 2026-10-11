@@ -36,7 +36,7 @@ export function csrf(req: Request) {
     const fetchSite = req.headers.get("sec-fetch-site");
     assert(!fetchSite || ["same-origin", "none"].includes(fetchSite), 403, "CSRF", "Cross-site requests are not authorized.");
 }
-export const json = (data: unknown, status = 200, headers?: HeadersInit) => Response.json(data, { status, headers: { "Cache-Control": "no-store, private", ...headers } });
+export const json = (data: unknown, status = 200, headers?: HeadersInit) => { const h=new Headers(headers);h.set("Cache-Control","no-store, private");return Response.json(data,{status,headers:h}); };
 export function failure(error: unknown): Response {
     if (error instanceof AppError)
         return json({ error: { code: error.code, message: error.message, details: error.details } }, error.status);

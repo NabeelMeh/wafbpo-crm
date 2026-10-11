@@ -1,7 +1,8 @@
 "use client";
+import { isManagement } from "@/lib/domain/policy";
 import { useState } from "react";
 import { Download, BarChart3 } from "lucide-react";
-import { useLoad } from "@/components/app-provider";
+import { useApp, useLoad } from "@/components/app-provider";
 import { PageTitle, Button, ErrorBox, Loading, Empty } from "@/components/ui";
 import { DEPARTMENT_NAMES } from "@/lib/domain/types";
 import { downloadBlob, csvBlob } from "@/lib/client";
@@ -14,6 +15,7 @@ type Row = {
 };
 function startDate(days: number) { const d = new Date(); d.setDate(d.getDate() - days); return d.toISOString().slice(0, 10); }
 export default function Reports() {
+    const app = useApp();
     const [from, setFrom] = useState(startDate(30)), [to, setTo] = useState(startDate(0)), [applied, setApplied] = useState({ from: startDate(30), to: startDate(0) });
     const params = new URLSearchParams({ from: new Date(`${applied.from}T00:00:00`).toISOString(), to: new Date(`${applied.to}T23:59:59.999`).toISOString() });
     const { data, error, loading } = useLoad<{
@@ -29,9 +31,9 @@ export default function Reports() {
         for (const r of data.items)
             for (const [metric, count] of Object.entries(r.metrics))
                 rows.push([r.name, r.employeeId, r.department, metric, count]);
-        downloadBlob(csvBlob(rows), "wafbpo-performance-report.csv");
+        downloadBlob(csvBlob(rows), "cloud-nest-bpo-performance-report.csv");
     }
-    return <><PageTitle eyebrow="TEAM PERFORMANCE" title="Reports & attribution" description="Event-based counts preserve agent attribution when a Head performs the final completion. Dates use your browser's local time." actions={<Button variant="secondary" disabled={!data} onClick={exportReport}><Download size={16}/>Export report</Button>}/><section className="panel"><form className="table-toolbar" onSubmit={e => {
+    return <><PageTitle eyebrow="TEAM PERFORMANCE" title="Reports & attribution" description="Event-based counts preserve agent attribution when a Head performs the final completion. Dates use your browser's local time." actions={app.user&&isManagement(app.user)?<Button variant="secondary" disabled={!data} onClick={exportReport}><Download size={16}/>Export report</Button> : null}/><section className="panel"><form className="table-toolbar" onSubmit={e => {
             e.preventDefault();
             if (from && to)
                 setApplied({ from, to });

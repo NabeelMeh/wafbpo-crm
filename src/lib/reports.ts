@@ -67,3 +67,19 @@ export async function auditLog(u: Actor, url: URL) {
     const rows = await c.events.find(filter).sort({ at: -1, _id: -1 }).limit(101).toArray(), items = rows.slice(0, 100), last = items.at(-1);
     return { items: items.map(e => eventView(e, true)), nextCursor: rows.length > 100 && last ? encodeCursor({ at: last.at, id: last._id }) : null };
 }
+
+export async function monthlyLeadStatistics(u:Actor,url:URL){
+ assert(isManagement(u),403,"FORBIDDEN","Management/Admin access is required.");
+ const year=Number(url.searchParams.get("year")||new Date().getUTCFullYear()),timezone=process.env.REPORT_TIMEZONE||"Asia/Karachi";
+ assert(Number.isInteger(year)&&year>=2020&&year<=2100,400,"INVALID_YEAR","Invalid reporting year.");
+ try{new Intl.DateTimeFormat("en",{timeZone:timezone}).format();}catch{assert(false,503,"INVALID_TIMEZONE","Configure a valid reporting timezone.");}
+ const c=await collections(),from=new Date(Date.UTC(year,0,1)-172800000).toISOString(),to=new Date(Date.UTC(year+1,0,1)+172800000).toISOString();
+ const date={$dateFromString:{dateString:"$at"}},departments=["GENERATION","QA","CHASING","PV","MANAGEMENT"];
+ const rows=await c.events.aggregate<{_id:{month:number;department:string};count:number;movements:number}>([
+ {$match:{at:{$gte:from,$lt:to},arrivalDepartment:{$in:departments},leadId:{$exists:true}}},
+ {$addFields:{reportYear:{$year:{date,timezone}},reportMonth:{$month:{date,timezone}}}},{$match:{reportYear:year}},
+ {$group:{_id:{month:"$reportMonth",department:"$arrivalDepartment",leadId:"$leadId"},movements:{$sum:1}}},
+ {$group:{_id:{month:"$_id.month",department:"$_id.department"},count:{$sum:1},movements:{$sum:"$movements"}}}
+ ],{maxTimeMS:15000}).toArray();
+ return {year,timezone,definition:"Unique leads received per department per month. Total is department receipts, not distinct leads across the whole organization. Repeated receipts are shown separately as movement counts.",items:Array.from({length:12},(_,i)=>{const counts=Object.fromEntries(departments.map(d=>[d,rows.find(x=>x._id.month===i+1&&x._id.department===d)?.count||0]));return {month:i+1,...counts,total:Object.values(counts).reduce((a,b)=>a+b,0),movementCount:rows.filter(x=>x._id.month===i+1).reduce((a,b)=>a+b.movements,0)};})};
+}

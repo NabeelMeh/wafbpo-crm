@@ -12,7 +12,7 @@ export async function createImport(u: Actor, raw: unknown, key: string | null) {
     assert(isManagement(u), 403, "FORBIDDEN", "Only Management can import datasets.");
     const r = record(raw);
     onlyKeys(r, ["name", "total", "department"]);
-    assert(["CHASING", "PV"].includes(r.department as string), 400, "INVALID_DEPARTMENT", "Choose Chasing or Patient Verification.");
+    assert(r.department === "CHASING", 400, "INVALID_DEPARTMENT", "Raw dataset intake is Chasing only. Patient Verification accepts only Chasing denials.");
     assert(Number.isInteger(r.total) && Number(r.total) > 0 && Number(r.total) <= 5000, 400, "IMPORT_LIMIT", "Interactive imports support 1-5,000 rows per file.");
     return idempotent(u, key, raw, async (s) => {
         const c = await collections(), job = { _id: randomUUID(), name: text(r.name, "Import name", 100, true), department: r.department as "CHASING" | "PV", total: Number(r.total), createdBy: u.id, createdAt: new Date().toISOString(), status: "OPEN" as const };

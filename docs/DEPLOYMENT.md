@@ -1,48 +1,65 @@
-# Deploying to Vercel with MongoDB Atlas
+# Deployment and operations
 
-No external infrastructure was created by the authoring process. This guide and `vercel.json` prepare the application for deployment; they are not a deployment receipt.
+No infrastructure was provisioned by generating this archive. Complete docs/PRODUCTION_ACCEPTANCE.md in staging before real patient data is introduced.
 
-## Required rollout order
+## Application and database
 
-1. Install dependencies locally or in CI; run the full typecheck, 118 unit tests, Next.js production build and dependency audit. Commit the reviewed lockfile and use `npm ci` thereafter.
-2. Provision an Atlas transaction-capable database. Run `npm run db:indexes` and the first-admin bootstrap with migration credentials. Switch production runtime credentials to a least-privilege account.
-3. Provision and configure private file storage/scanning and optional Ably realtime using the sections below. Do not accept real files without an operational quarantine worker.
-4. Import the repository into Vercel as a Next.js project, with Node.js 22. The repository root is the project root. The API uses the Node runtime and exports a 60-second maximum duration; confirm your Vercel plan/deployment permits your limits.
-5. Set all server environment variables in Vercel. Set `APP_URL` to the exact production HTTPS origin and `REQUIRE_PRIVILEGED_MFA=true`. Do not deploy the bootstrap administrator password. Separate preview deployments from production databases and keys.
-6. Deploy, then test authentication/MFA, both lead pipelines, version conflicts, duplicate warnings, two-tab alert claims, file quarantine/download, imports, report attribution and account revocation through a browser.
+Use the package root as a Next.js project. The API uses the Node runtime and declares a 60-second maximum duration. Verify the actual deployment plan supports request sizes/durations and authenticated file streaming. No guarantee of hosting-platform capacity is made.
 
-The homepage redirects to the application dashboard; unauthenticated workspace access goes to login. `/api/health` is a process/liveness check only, not a database/storage readiness check.
+Run npm install once, fix dependency/API issues, run full checks, commit the reviewed lockfile, and use npm ci thereafter. The example CI refuses to pass without a lockfile. Set production APP_URL to the exact HTTPS origin and REQUIRE_PRIVILEGED_MFA=true. Keep preview and test deployments isolated from production databases and secrets. Do not deploy ADMIN_PASSWORD. Run `npm run env:check:production` against the deployment environment; this only validates configuration format, not service connectivity.
 
-## MongoDB behavior
+MongoDB needs multi-document transactions. Run the reviewed migration separately under temporary migration privileges, then use least-privilege runtime credentials. Keep the original database name and data/search keys. Use private network access/allowlisting appropriate to the hosting setup. Size pools and query indexes against measured load rather than assuming a million-record performance target has passed.
 
-The shared client promise reuses a pool per running instance. Pool size is 10, minimum 0; there is still one pool per application instance, not one pool for the whole deployment. Size Atlas connections and request concurrency accordingly. Transactions use snapshot read concern and majority writes. Index migration is a separate deployment step, not an action repeated on every request.
+GET /api/health reports process liveness only. It is not a database, SMTP, storage or scanner readiness result.
 
-Use Atlas query diagnostics on production-like data to add compound indexes for your actual filter/sort combinations. Keyset pagination avoids high-offset `skip()` paging, but no claim of million-record performance is made without benchmarking. Monitor database connections, query latency, write conflicts, transaction aborts and pool wait timeouts.
+## SMTP and new-device codes
 
-## Realtime and sound
+Set SMTP_HOST, SMTP_PORT (465 or 587), SMTP_USER, SMTP_PASSWORD and SMTP_FROM in server-only secret storage. The client requires TLS and certificate validation. Use credentials authorized for the sending service; do not paste a personal mailbox password into source code. Configure sender authentication and delivery policy with the provider. Actual delivery, latency and spam handling must be tested.
 
-Set a server-only `ABLY_API_KEY`. The browser requests a five-minute, subscribe-only capability for `waf:user:<authenticated-user-id>`. Lead contents are fetched only from the authenticated CRM API. Pub/sub messages contain an invalidation timestamp, not patient fields.
+SECURITY_EMAIL is a server-only fallback. Authorized Management/Admin users can update the encrypted setting in Organization settings. Never use NEXT_PUBLIC_ variables for it. Public branding responses contain only the brand name/logo URL/revision.
 
-The durable source is MongoDB. An Ably hint wakes the polling loop immediately; failed/disconnected realtime falls back to polling approximately every ten seconds in an active tab, with error backoff. Presence is heartbeat-derived, with away after inactivity and offline after an expired heartbeat. Do not promise an exact delivery latency or offline desktop alerts.
+Codes expire after five minutes, are single use and limited to five counted attempts. Trust is per user and opaque browser cookie, expires after 90 days and can be revoked. A shared verification mailbox is an organizational approval dependency, not a replacement for privileged MFA or independent identity proofing.
 
-Each popup/buzzer is claimed atomically on the server before display, preventing repeated sounds on refresh/reconnect/another tab. This is deliberately at-most-once sound delivery, not exactly-once audible delivery. A tab crash immediately after claiming may prevent the sound; the persisted notification remains. Enable sound with the header button after login. Background browser restrictions still apply.
+## Private S3 storage
 
-## S3 configuration
+Create a private bucket with VERSIONING ENABLED, all public-access blocks enabled, public ACLs disabled and approved encryption/retention. Set exact-origin CORS using docs/s3-cors.example.json. Test multipart browser POST/CORS and immutable-version reads. The application uses both leads/ and branding/ prefixes. Update the IAM example's bucket name; do not grant application runtime object-delete permission.
 
-Create a dedicated private bucket, enable versioning, disable public ACLs/block public access, and enable the encryption policy appropriate to your environment. Use `docs/s3-cors.example.json` with the real exact origin. Browser uploads go directly to S3 using a five-minute presigned POST; the CRM API stores metadata only.
+Browser uploads use short-lived signed POSTs bound to random object keys, canonical content type and exact size. Completion verifies actual object metadata and pins a version. Files remain unreadable until the separate scanner validates content and marks that exact version CLEAN. Downloads are streamed through the authenticated CRM API, rechecking record authorization rather than returning reusable public file URLs. Only the explicitly selected clean logo is intentionally public.
 
-A runtime identity requires bucket-versioning read access and object put/get/version-get access for the application's `leads/` prefix. Use the example policy as a starting point, not a universal IAM configuration. Do not grant object-delete permission to the application. Add KMS permissions only if your bucket requires a customer-managed KMS key. Signed POST compatibility must be tested for any alternative S3 endpoint.
+For custom S3_ENDPOINT deployments, verify versioning, presigned POST, range reads, private access and deletion semantics; compatibility is not assumed.
 
-The scanner uses authenticated `/api/internal/scan` endpoints and presigned immutable-version reads; it does not need the database credentials. Install/update ClamAV on a controlled worker host, configure the shared scanner secret and HTTPS application origin, and run:
+## ClamAV worker - runs outside Vercel
+
+Use an isolated, maintained worker host with Node dependencies installed and a real ClamAV installation. Run freshclam/signature updates through your host's approved service. The worker requires SCANNER_APP_URL, FILE_SCAN_SECRET, CLAMSCAN_PATH and, optionally, CLAMAV_MAX_SIGNATURE_AGE_HOURS (default 48). It does not need patient data keys or database credentials for scanning.
 
 ```sh
+clamscan --version
+# Start/update freshclam using your host's supported service procedure.
 npm run worker:scan
 ```
 
-This processes at most five queued files and exits. Schedule recurring invocations in your own worker/job service; this repository does not automatically host or schedule it. Alert on retry failures, signature-update age, queue age and rejected files. Quarantine has no bypass/download endpoint.
+Each invocation checks signature freshness, obtains at most ONE leased immutable file, performs bounded content inspection and ClamAV scanning, reports the verdict and exits. Run it repeatedly (for example every 15 seconds after completion). First run it with an empty queue to establish the heartbeat before accepting uploads. The application refuses uploads when the last heartbeat is older than five minutes. Operational errors remain quarantined and retry after the lease expires; they are never treated as clean.
 
-## Operations not provisioned here
+Example systemd unit/timer files are under deploy/. Review paths, service user, secrets permissions, ClamAV flags, resource limits and sandboxing on your host before enabling. These templates have not been run here. Do not make the scan API public without its independent bearer secret or reuse application/data keys as that secret.
 
-Enable suitable Atlas backups/PITR and test restoration into a separate environment. Configure S3 version retention/backups, protected audit retention and secret recovery. Define and test retention rules before introducing cleanup jobs. This repository does not silently delete historical recordings, PDFs or events.
+Alert on signature age, worker failures, stale heartbeat, growing queue, stuck leases and rejected files. One-file batches may need multiple controlled workers for the required throughput; measure it. Format inspection is a defense layer, not a substitute for maintained malware scanning and safe endpoints.
 
-Connect Vercel operational logs to an approved monitoring system without logging request bodies, patient values, session tokens, credentials or signed URLs. The API's error log contains a correlation ID and exception type; richer diagnostics need a privacy-safe monitoring integration. Add uptime/readiness checks, alert routing, a rollback process and documented restore targets. Monitoring dashboards, backup jobs and external service accounts are not generated by these source files.
+## Authorized physical deletion
+
+UI/API deletion records an audit event and immediately removes normal access. File bytes are queued for a separate worker:
+
+```sh
+npm run worker:purge
+```
+
+The purge worker needs narrowly scoped list-versions/delete-version permissions for the private prefixes and database access; the web runtime does not. It removes all versions of the exact object key and marks metadata PURGED. Schedule it according to your approved retention/deletion policy. It processes at most 25 queued files per run.
+
+Audit records intentionally survive deletion and may retain historical encrypted details. Backups and legal retention are not erased by this worker. This is operational deletion, NOT a promise of complete privacy-law erasure. Define lawful retention with the organization's responsible privacy/security personnel before live use.
+
+## Realtime and operations
+
+ABLY_API_KEY is optional; authenticated polling is the fallback. Private channels use stable internal names for upgrade compatibility. Pub/sub signals invalidate data; lead contents still come from authorized APIs. Browser audio requires a user gesture and can be suppressed by the browser. Sound is at-most-once per server claim, not guaranteed exactly-once delivery.
+
+Configure backups/PITR, object retention, recoverable secrets, encrypted audit retention, privacy-safe logs, monitoring/alerts, incident response and restore drills. Add application and infrastructure load tests. Logs must not contain patient payloads, verification codes, passwords, signed URLs or session tokens. Self-hosted deployment needs a deliberately configured trusted proxy/edge rate limiter; arbitrary forwarded IP headers are not trusted by the source.
+
+Do not lift the release block until build, functional, external-service, security, backup/restore and business acceptance are recorded. No compliance certification or penetration-test pass is implied.

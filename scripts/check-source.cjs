@@ -1,0 +1,8 @@
+const fs=require('fs'),path=require('path'),ts=require('typescript');
+const root=path.resolve(__dirname,'..');let count=0,errors=[];
+function walk(p){for(const name of fs.readdirSync(p)){if(['node_modules','.next','.git'].includes(name))continue;const f=path.join(p,name);if(fs.statSync(f).isDirectory())walk(f);else if(/\.(ts|tsx)$/.test(f)&&!f.endsWith('.d.ts')){
+ count++;const source=fs.readFileSync(f,'utf8');const result=ts.transpileModule(source,{fileName:f,reportDiagnostics:true,compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext,jsx:ts.JsxEmit.Preserve,isolatedModules:true}});
+ for(const d of result.diagnostics||[])if(d.category===ts.DiagnosticCategory.Error)errors.push({file:path.relative(root,f),message:ts.flattenDiagnosticMessageText(d.messageText,' ')});
+ const sf=ts.createSourceFile(f,source,ts.ScriptTarget.Latest,true,f.endsWith('tsx')?ts.ScriptKind.TSX:ts.ScriptKind.TS);
+ function visit(n){if((ts.isImportDeclaration(n)||ts.isExportDeclaration(n))&&n.moduleSpecifier&&ts.isStringLiteral(n.moduleSpecifier)){const spec=n.moduleSpecifier.text;if(spec.startsWith('.')||spec.startsWith('@/')){const base=spec.startsWith('@/')?path.join(root,'src',spec.slice(2)):path.resolve(path.dirname(f),spec);if(!['','.ts','.tsx','.js','/index.ts','/index.tsx'].some(ext=>fs.existsSync(base+ext)))errors.push({file:path.relative(root,f),message:'Missing internal import '+spec});}}ts.forEachChild(n,visit);}visit(sf);
+}}}walk(root);console.log(JSON.stringify({check:'TypeScript syntax and internal imports (not a full application typecheck)',files:count,errors},null,2));process.exitCode=errors.length?1:0;

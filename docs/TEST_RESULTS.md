@@ -1,25 +1,19 @@
-# Build and verification record
+# Verification of the delivered source snapshot
 
-Prepared: 21 September 2026. Application version: 0.1.0.
+## Actual results recorded while packaging
 
-## Executed successfully
+- Core and independent regression suite: **191 passed, 0 failed, 0 skipped**. These are unit/core checks, not 191 browser or integration scenarios.
+- Dependency-free core TypeScript check: passed using the available global compiler and Node type definitions.
+- TypeScript/TSX syntax and internal-import check: passed. This does not resolve third-party package types or prove the application builds.
+- Full application typecheck: **not passed**. Dependencies and their type definitions are missing; raw diagnostics are included rather than represented as a clean result.
+- Production build: **not passed / could not start** because the next executable is not installed.
+- npm registry access: unavailable (DNS EAI_AGAIN in the bounded attempt); no successfully installed dependency tree or generated lockfile.
+- MongoDB integration, browser, live SMTP/S3/ClamAV/Ably, deployment/load/restore/security acceptance: **not run**.
 
-- `npm test`: **118 tests passed, 0 failed, 0 skipped** under Node.js 22.16.0. Tests use Node's type stripping and test runner, so application dependencies are not needed for this suite.
-- Strict semantic TypeScript check of dependency-free domain, validation, encryption, search and HTTP modules plus their unit tests using the preinstalled TypeScript compiler: **passed**.
-- Syntax parsing, isolated transpilation and local-import existence checks across repository `.ts`/`.tsx` files: **passed**. See `verification.json` for the final checked file count.
+Fresh logs are in verification/. Previous documents/logs under docs/history are retained for provenance only and do not validate this source.
 
-Coverage includes department order, row/field permissions, authorized state transitions, head-only completion, required reasons/follow-ups, QA return/resubmission, original-agent attribution, full pure-domain lifecycle, invalid input/mass-assignment rejection, password validation and hashing, AES-GCM context/tamper behavior, search/duplicate normalization, CSV formula protection, base32/TOTP known vectors and replay checks, CSRF/origin checks, bounded JSON parsing, cursor validation and pagination limits.
+The independent regression tests cover automatic routing and legacy restrictions, shared Q/A read access and claim mutation gates, enrollment policy, deletion authorization, file metadata/content defenses, device-policy timing/token rules, export field completeness and formula neutralization. They do not prove live database race handling or network services work.
 
-## Not executed
+The source-level integration suite is included for execution against an isolated empty test database; it is not claimed as passed. Browser and real service acceptance are explicit tasks in PRODUCTION_ACCEPTANCE.md.
 
-A full dependency installation was attempted but the environment could not resolve `registry.npmjs.org`. As a result, no `node_modules` or generated lockfile is delivered. The **complete application typecheck, Next.js production build, browser rendering/accessibility testing and dependency vulnerability audit were not executed**. Passing syntax checks is not equivalent to passing the full application build.
-
-No Atlas URI, S3 bucket, Ably credentials, Vercel deployment or scanner runtime was provisioned. Therefore the real MongoDB integration suite, S3/ClamAV upload/scan/download cycle, realtime provider path, multi-tab browser behavior, capacity tests and deployment smoke tests were not executed here.
-
-`tests/integration.ts` is an opt-in test program for an empty isolated replica-set database. It exercises authentication, stored encryption/masking, API authorization, workflow transitions, retry access checks, notification claim concurrency, stable user-creation retries and account revocation. It is supplied for execution in your environment, not counted in the 118 passed tests.
-
-## Required next verification
-
-After dependency installation, run `npm run typecheck`, `npm test`, `npm run build`, and review `npm audit --omit=dev`. Address any dependency-version/API mismatches before deployment. Commit the reviewed lockfile and update CI to use `npm ci`.
-
-Run the isolated MongoDB suite, then test real browser sessions for all ten effective role types. Verify imports including duplicates/errors/resume, conflicting edits, two-tab delivery, enrollment/recovery/password resets, inactive-user revocation, file-quarantine failures, every head final state and Management reopening. Load-test production-like data with measured Atlas plans before accepting the million-record target. Restore a backup and test operational alerts before onboarding real patient data.
+**Conclusion: updated source release candidate; not verified for production.**

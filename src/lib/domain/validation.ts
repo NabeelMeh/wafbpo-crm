@@ -113,4 +113,4 @@ export function parseActivity(raw: unknown) {
             assert(Number.isFinite(Date.parse(out[key])), 400, "INVALID_DATE", `Invalid ${key}.`);
     return { kind, data: out };
 }
-export function passwordPolicy(password: string) { assert(password.length >= 14 && password.length <= 128, 400, "WEAK_PASSWORD", "Use a password or passphrase between 14 and 128 characters."); }
+export function passwordPolicy(password: string) { assert(password.length >= 10 && password.length <= 128, 400, "WEAK_PASSWORD", "Use a password or passphrase between 10 and 128 characters."); assert(!/^(password|password123|1234567890|qwerty12345)$/i.test(password), 400, "WEAK_PASSWORD", "Choose a less predictable password."); }

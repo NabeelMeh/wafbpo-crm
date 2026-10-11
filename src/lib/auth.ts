@@ -50,7 +50,7 @@ export async function consumeMfa(user: UserDoc, code: string): Promise<boolean> 
 export const deviceCookieName = () => process.env.NODE_ENV === "production" ? "__Host-cloudnest_device" : "cloudnest_device";
 function readDevice(req:Request):string|null { const part=req.headers.get("cookie")?.split(";").map(x=>x.trim()).find(x=>x.startsWith(`${deviceCookieName()}=`)); const token=part?.slice(deviceCookieName().length+1);return validDeviceToken(token)?token:null; }
 function deviceCookie(token:string){return `${deviceCookieName()}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(TRUSTED_DEVICE_TTL_MS/1000)}${process.env.NODE_ENV==="production"?"; Secure":""}`;}
-export type LoginResult={user?:ReturnType<typeof actor>;requiresDeviceVerification?:boolean;challengeId?:string;cookies:string[]};
+export type LoginResult={user?:ReturnType<typeof actor>;requiresOtp?:boolean;requiresDeviceVerification?:boolean;challengeId?:string;cookies:string[]};
 async function startSession(req:Request,user:UserDoc,mfaVerified:boolean,deviceHash?:string):Promise<LoginResult>{
  const token=randomBytes(32).toString("base64url"),now=new Date(),c=await collections(),info=requestInfo(req);
  await transaction(async s=>{
@@ -71,6 +71,7 @@ export async function login(req:Request,raw:unknown):Promise<LoginResult>{
  const valid=user?await verifyPassword(password,user.passwordHash):!!(await hashPassword(password))&&false;
  assert(valid&&user&&user.accountStatus==="ACTIVE"&&user.enrollmentStatus!=="NOT_ENROLLED",401,"INVALID_CREDENTIALS","Invalid credentials, verification code, or inactive account.");
  if(isManagement(actor(user)))return startSession(req,user,true);
+ if(user.mfaEnabled&&(typeof r.otp!=="string"||!r.otp.trim()))return {requiresOtp:true,cookies:[]};
  if(user.mfaEnabled)assert(await consumeMfa(user,text(r.otp,"Verification code",40)),401,"INVALID_CREDENTIALS","Invalid credentials, verification code, or inactive account.");
  const token=readDevice(req)||randomBytes(32).toString("base64url"),deviceHash=blind(`device:${token}`),now=new Date();
  const trusted=await c.trustedDevices.findOne({userId:user._id,deviceHash,expiresAt:{$gt:now},revokedAt:{$exists:false}});

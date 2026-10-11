@@ -32,7 +32,7 @@ export async function handle(req: Request): Promise<Response> {
         if ((path === "auth/login" || path === "auth/verify-device") && method === "POST") {
             const result = path === "auth/login" ? await login(req, await body(req,8192)) : await verifyDevice(req,await body(req,8192));
             const headers=new Headers();for(const value of result.cookies)headers.append("Set-Cookie",value);
-            return json({user:result.user,requiresDeviceVerification:result.requiresDeviceVerification,challengeId:result.challengeId},200,headers);
+            return json({user:result.user,requiresOtp:result.requiresOtp,requiresDeviceVerification:result.requiresDeviceVerification,challengeId:result.challengeId},200,headers);
         }
         if (path === "auth/logout" && method === "POST")
             return json({ ok: true }, 200, { "Set-Cookie": await logout(req) });

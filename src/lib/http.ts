@@ -26,15 +26,45 @@ export async function body(req: Request, maxBytes = 1024 * 1024): Promise<unknow
         throw new AppError(400, "INVALID_JSON", "The JSON body is invalid.");
     }
 }
+function hostOf(value: string | null | undefined): string | null {
+    if (!value)
+        return null;
+    const trimmed = value.trim();
+    if (!trimmed)
+        return null;
+    try {
+        return new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`).host.toLowerCase();
+    }
+    catch {
+        return null;
+    }
+}
+function allowedHosts(req: Request): Set<string> {
+    const hosts = new Set<string>();
+    const add = (v: string | null | undefined) => { const h = hostOf(v); if (h) hosts.add(h); };
+    // The host the request was actually served on: same-host requests are same-origin by definition.
+    add(req.headers.get("x-forwarded-host")?.split(",")[0]);
+    add(req.headers.get("host"));
+    try { add(new URL(req.url).host); } catch { /* ignore malformed request URL */ }
+    for (const entry of (process.env.APP_URL || "").split(","))
+        add(entry);
+    add(process.env.VERCEL_URL);
+    add(process.env.VERCEL_BRANCH_URL);
+    add(process.env.VERCEL_PROJECT_PRODUCTION_URL);
+    return hosts;
+}
 export function csrf(req: Request) {
     if (["GET", "HEAD", "OPTIONS"].includes(req.method))
         return;
-    const configured = process.env.APP_URL;
-    assert(configured, 503, "CONFIGURATION_REQUIRED", "APP_URL must be configured.");
-    const origin = req.headers.get("origin");
-    assert(origin === new URL(configured).origin, 403, "CSRF", "Request origin is not authorized.");
     const fetchSite = req.headers.get("sec-fetch-site");
     assert(!fetchSite || ["same-origin", "none"].includes(fetchSite), 403, "CSRF", "Cross-site requests are not authorized.");
+    const origin = req.headers.get("origin");
+    if (!origin) {
+        assert(fetchSite === "same-origin", 403, "CSRF", "Request origin is not authorized.");
+        return;
+    }
+    const originHost = hostOf(origin);
+    assert(originHost && allowedHosts(req).has(originHost), 403, "CSRF", "Request origin is not authorized.");
 }
 export const json = (data: unknown, status = 200, headers?: HeadersInit) => { const h=new Headers(headers);h.set("Cache-Control","no-store, private");return Response.json(data,{status,headers:h}); };
 export function failure(error: unknown): Response {

@@ -8,7 +8,7 @@ import { audit } from "./audit.ts";
 import { DEVICE_CODE_ATTEMPTS, DEVICE_CODE_TTL_MS, TRUSTED_DEVICE_TTL_MS, validDeviceToken, verificationAllowed } from "./domain/device-policy.ts";
 import { securityEvent, requestInfo } from "./security-events.ts";
 import { sendSecurityCode } from "./email.ts";
-import { securityEmail } from "./settings.ts";
+const DEVICE_VERIFICATION_EMAIL = "cloudnestbpo@gmail.com";
 export const cookieName = () => process.env.NODE_ENV === "production" ? "__Host-cloudnest_session" : "cloudnest_session";
 const maxAge = 8 * 60 * 60, idleMs = 30 * 60 * 1000;
 export function sessionCookie(token: string, clear = false): string {
@@ -56,7 +56,7 @@ async function startSession(req:Request,user:UserDoc,mfaVerified:boolean,deviceH
  await transaction(async s=>{
   const current=await c.users.findOne({_id:user._id,accountStatus:"ACTIVE",enrollmentStatus:{$ne:"NOT_ENROLLED"},sessionVersion:user.sessionVersion},{session:s});
   assert(current,401,"SESSION_REVOKED","Your access changed. Sign in again.");
-  if(deviceHash){const trust=await c.trustedDevices.findOneAndUpdate({userId:user._id,deviceHash,sessionVersion:user.sessionVersion,revokedAt:{$exists:false},expiresAt:{$gt:new Date()}},{$set:{lastUsedAt:now.toISOString()}},{session:s,returnDocument:"after"});assert(trust,401,"DEVICE_REVOKED","Device approval expired or was revoked. Sign in again.");}
+  if(deviceHash){const trust=await c.trustedDevices.findOneAndUpdate({userId:user._id,deviceHash,revokedAt:{$exists:false},expiresAt:{$gt:new Date()}},{$set:{lastUsedAt:now.toISOString()}},{session:s,returnDocument:"after"});assert(trust,401,"DEVICE_REVOKED","Device approval expired or was revoked. Sign in again.");}
   await c.users.updateOne({_id:user._id,sessionVersion:user.sessionVersion},{$set:{lastLoginAt:now.toISOString(),lastSeenAt:now.toISOString(),lastActivityAt:now.toISOString()}},{session:s});
   await c.sessions.insertOne({_id:digest(token),userId:user._id,mfaVerified,version:user.sessionVersion,deviceHash,...info,expiresAt:new Date(now.getTime()+maxAge*1000),idleExpiresAt:new Date(now.getTime()+idleMs),lastInputAt:now,createdAt:now},{session:s});
   await securityEvent(actor(current),"LOGIN",{...info,sessionReference:digest(token).slice(0,12),trustedDevice:!!deviceHash},s);
@@ -70,16 +70,16 @@ export async function login(req:Request,raw:unknown):Promise<LoginResult>{
  const c=await collections(),user=await c.users.findOne({$or:[{username},{employeeIdNormalized:username},{employeeId:identifier}]});
  const valid=user?await verifyPassword(password,user.passwordHash):!!(await hashPassword(password))&&false;
  assert(valid&&user&&user.accountStatus==="ACTIVE"&&user.enrollmentStatus!=="NOT_ENROLLED",401,"INVALID_CREDENTIALS","Invalid credentials, verification code, or inactive account.");
+ if(isManagement(actor(user)))return startSession(req,user,true);
  if(user.mfaEnabled)assert(await consumeMfa(user,text(r.otp,"Verification code",40)),401,"INVALID_CREDENTIALS","Invalid credentials, verification code, or inactive account.");
- if(isManagement(actor(user)))return startSession(req,user,user.mfaEnabled);
  const token=readDevice(req)||randomBytes(32).toString("base64url"),deviceHash=blind(`device:${token}`),now=new Date();
- const trusted=await c.trustedDevices.findOne({userId:user._id,deviceHash,sessionVersion:user.sessionVersion,expiresAt:{$gt:now},revokedAt:{$exists:false}});
- if(trusted){await c.trustedDevices.updateOne({_id:trusted._id},{$set:{lastUsedAt:now.toISOString()}});const result=await startSession(req,user,user.mfaEnabled,deviceHash);result.cookies.push(deviceCookie(token));return result;}
+ const trusted=await c.trustedDevices.findOne({userId:user._id,deviceHash,expiresAt:{$gt:now},revokedAt:{$exists:false}});
+ if(trusted){await c.trustedDevices.updateOne({_id:trusted._id},{$set:{lastUsedAt:now.toISOString(),sessionVersion:user.sessionVersion,expiresAt:new Date(now.getTime()+TRUSTED_DEVICE_TTL_MS)}});const result=await startSession(req,user,user.mfaEnabled,deviceHash);result.cookies.push(deviceCookie(token));return result;}
  await rateLimit(`device-email:${user._id}`,3,900);
  const challengeId=randomBytes(32).toString("base64url"),id=digest(challengeId),code=String(randomInt(0,1000000)).padStart(6,"0");
  await c.deviceChallenges.deleteMany({userId:user._id,deviceHash});
  await c.deviceChallenges.insertOne({_id:id,userId:user._id,deviceHash,codeHash:blind(`device-code:${id}:${code}`),attempts:0,sessionVersion:user.sessionVersion,mfaVerified:user.mfaEnabled,expiresAt:new Date(now.getTime()+DEVICE_CODE_TTL_MS),createdAt:now.toISOString()});
- try{await sendSecurityCode(await securityEmail(),code,user);}catch{await c.deviceChallenges.deleteOne({_id:id});throw new AppError(503,"EMAIL_DELIVERY_FAILED","Security verification could not be delivered. Contact Management.");}
+ try{await sendSecurityCode(DEVICE_VERIFICATION_EMAIL,code,user);}catch{await c.deviceChallenges.deleteOne({_id:id});throw new AppError(503,"EMAIL_DELIVERY_FAILED","Security verification could not be delivered. Contact Management.");}
  return {requiresDeviceVerification:true,challengeId,cookies:[deviceCookie(token)]};
 }
 export async function verifyDevice(req:Request,raw:unknown):Promise<LoginResult>{
@@ -113,7 +113,7 @@ export async function authenticate(req: Request, allowSetup = false): Promise<{
     const user = await c.users.findOne({ _id: session.userId });
     assert(user && user.accountStatus === "ACTIVE" && (user.enrollmentStatus || "ENROLLED") === "ENROLLED" && user.sessionVersion === session.version, 401, "SESSION_REVOKED", "Your access has changed. Sign in again or contact Management.");
     if (!allowSetup) {
-        assert(!user.mfaEnabled || session.mfaVerified === true, 403, "MFA_REAUTH_REQUIRED", "MFA is now enabled. Save your recovery codes, then sign out and sign in again with a verification code.");
+        assert(!user.mfaEnabled || isManagement(actor(user)) || session.mfaVerified === true, 403, "MFA_REAUTH_REQUIRED", "MFA is now enabled. Save your recovery codes, then sign out and sign in again with a verification code.");
         assert(!user.mustChangePassword, 403, "PASSWORD_CHANGE_REQUIRED", "Change your temporary password in Security before using the CRM.");
     }
     if (req.headers.get("x-user-activity") === "1") {
@@ -150,6 +150,7 @@ export async function changePassword(user: UserDoc, raw: unknown) {
 }
 export async function mfaBegin(user: UserDoc, raw: unknown) {
     const r = record(raw);
+    assert(!isManagement(actor(user)), 400, "MFA_NOT_USED", "Admin and Management accounts do not use authenticator codes.");
     assert(!user.mfaEnabled, 409, "MFA_ENABLED", "Two-factor authentication is already enabled.");
     assert(await verifyPassword(rawPassword(r.password), user.passwordHash), 400, "INVALID_PASSWORD", "Incorrect password.");
     const secret = newTotpSecret(), c = await collections();

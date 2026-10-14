@@ -90,6 +90,8 @@ export interface FileDoc {
     deletedAt?: string;
     deletedBy?: string;
     purgeAfter?: string;
+    inspection?: "IN_APP";
+    inspectedAt?: string;
     scanLeaseToken?: string;
     scanLeaseUntil?: Date;
     nextScanAt?: Date;

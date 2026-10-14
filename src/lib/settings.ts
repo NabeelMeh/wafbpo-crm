@@ -9,7 +9,7 @@ import {idempotent} from './leads.ts';
 export const BRAND_NAME='Cloud Nest BPO';
 export async function securityEmail():Promise<string>{const row=await (await collections()).settings.findOne({_id:'security-email'});return row?unseal<string>(row.value as string,'setting:security-email'):(process.env.SECURITY_EMAIL||'cloudnestbpo@gmail.com');}
 export async function publicBranding(){const row=await (await collections()).settings.findOne({_id:'branding'});const value=row?.value as {logoFileId?:string}|undefined;return {name:BRAND_NAME,logoUrl:value?.logoFileId?`/api/branding/logo?revision=${encodeURIComponent(row!.updatedAt)}`:null,revision:row?.updatedAt||'default'};}
-export async function getSettings(u:Actor){assert(isManagement(u),403,'FORBIDDEN','Management/Admin access is required.');const c=await collections(),heartbeat=await c.settings.findOne({_id:'scanner-heartbeat'});return {branding:await publicBranding(),securityEmail:await securityEmail(),emailConfigured:!!(process.env.SMTP_HOST&&process.env.SMTP_USER&&process.env.SMTP_PASSWORD&&process.env.SMTP_FROM),storageConfigured:!!process.env.S3_BUCKET,scannerLastSeen:heartbeat?.updatedAt||null,scannerConfigured:!!process.env.FILE_SCAN_SECRET};}
+export async function getSettings(u:Actor){assert(isManagement(u),403,'FORBIDDEN','Management/Admin access is required.');return {branding:await publicBranding(),securityEmail:await securityEmail(),emailConfigured:!!(process.env.SMTP_HOST&&process.env.SMTP_USER&&process.env.SMTP_PASSWORD&&process.env.SMTP_FROM),storageConfigured:!!process.env.S3_BUCKET};}
 export async function saveSettings(u:Actor,raw:unknown,key:string|null){
  assert(isManagement(u),403,'FORBIDDEN','Management/Admin access is required.');const r=record(raw);onlyKeys(r,['securityEmail','logoFileId']);
  const email=r.securityEmail===undefined?undefined:text(r.securityEmail,'Security email',254,true);
@@ -19,7 +19,7 @@ export async function saveSettings(u:Actor,raw:unknown,key:string|null){
   if(email){await c.settings.updateOne({_id:'security-email'},{$set:{value:seal(email,'setting:security-email'),updatedAt:now,updatedBy:u.id}},{upsert:true,session:s});await audit(u,'SECURITY_EMAIL_CHANGED',{changed:true},undefined,s);}
   if(r.logoFileId!==undefined){
    const id=r.logoFileId===null?null:text(r.logoFileId,'Logo file',100,true);
-   if(id){const file=await c.files.findOne({_id:id,kind:'LOGO',status:'CLEAN',leadId:'__branding__'},{session:s});assert(file,409,'LOGO_NOT_READY','The uploaded logo must finish security scanning before saving.');}
+   if(id){const file=await c.files.findOne({_id:id,kind:'LOGO',status:'CLEAN',leadId:'__branding__'},{session:s});assert(file,409,'LOGO_NOT_READY','The uploaded logo did not pass file verification. Upload a valid PNG, JPEG or WebP image.');}
    const old=await c.settings.findOne({_id:'branding'},{session:s});const oldId=(old?.value as {logoFileId?:string}|undefined)?.logoFileId;
    await c.settings.updateOne({_id:'branding'},{$set:{value:{name:BRAND_NAME,logoFileId:id},updatedAt:now,updatedBy:u.id}},{upsert:true,session:s});
    if(oldId&&oldId!==id)await c.files.updateOne({_id:oldId,kind:'LOGO'},{$set:{status:'DELETED',deletedAt:now,deletedBy:u.id,purgeAfter:now}},{session:s});

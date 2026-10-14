@@ -24,4 +24,7 @@ export function validateFileMetadata(name:string,type:string,size:number,logo=fa
  assert(Number.isSafeInteger(size)&&size>0&&size<=maxMB*1024*1024,400,'INVALID_FILE',`File size must be between 1 byte and ${maxMB} MB.`);
  return {name,type:rule.mime,size,kind:logo?'LOGO' as const:rule.kind,ext,maxMB};
 }
-export const FILE_ACCEPT=Object.keys(FILE_TYPES).map(x=>`.${x}`).join(',');
+// Lead attachments are limited to formats the built-in inspection can verify structurally.
+export const LEAD_ATTACHMENT_KINDS:FileKind[]=['PDF','RECORDING'];
+export function assertLeadAttachment(kind:FileKind){assert(LEAD_ATTACHMENT_KINDS.includes(kind),400,'INVALID_FILE','Lead attachments must be PDF documents or audio recordings.');}
+export const FILE_ACCEPT=Object.entries(FILE_TYPES).filter(([,rule])=>LEAD_ATTACHMENT_KINDS.includes(rule.kind)).map(([ext])=>`.${ext}`).join(',');

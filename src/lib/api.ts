@@ -6,7 +6,7 @@ import { createLead, getLead, leadView, editLead, applyWorkflow, bulkWorkflow, a
 import { listNotifications, claimNotification, acknowledgeNotification, ablyTokenRequest } from "./notifications.ts";
 import { saveUser, deleteUser, listUsers, assignees, team } from "./users.ts";
 import { reports, auditLog, monthlyLeadStatistics } from "./reports.ts";
-import { beginUpload, completeUpload, listFiles, downloadFile, scannerAuth, scanQueue, scanResult, fileContent, publicLogo, deleteFile } from "./storage.ts";
+import { beginUpload, completeUpload, listFiles, downloadFile, fileContent, publicLogo, deleteFile } from "./storage.ts";
 import { createImport, importChunk, finishImport, listImports, importErrors } from "./imports.ts";
 import { publicBranding, getSettings, saveSettings, listDevices, revokeDevice } from "./settings.ts";
 import { securityActivity } from "./security-events.ts";
@@ -18,14 +18,6 @@ export async function handle(req: Request): Promise<Response> {
         const url = new URL(req.url), path = url.pathname.replace(/^\/api\//, "").replace(/\/$/, ""), segments = path.split("/"), method = req.method, key = req.headers.get("idempotency-key");
         if (path === "health" && method === "GET")
             return json({ status: "ok", service: "CLOUD NEST BPO CRM", version: "0.3.0-rc.1" });
-        if (path.startsWith("internal/scan")) {
-            scannerAuth(req);
-            if (path === "internal/scan" && method === "GET")
-                return json(await scanQueue());
-            if (path === "internal/scan" && method === "POST")
-                return json(await scanResult(await body(req)));
-            throw new AppError(404, "NOT_FOUND", "Endpoint not found.");
-        }
         if (path === "branding" && method === "GET") return json(await publicBranding());
         if (path === "branding/logo" && method === "GET") return publicLogo(req);
         csrf(req);

@@ -7,7 +7,7 @@ import { useApp } from "./app-provider";
 import { Field, Button, ErrorBox } from "./ui";
 import { EMPTY_PATIENT, EMPTY_DOCTOR } from "@/lib/domain/types";
 import type { Patient, Doctor, LeadView } from "@/lib/domain/types";
-import { canEditPatient, canEditDoctor, isManagement, actionVisible } from "@/lib/domain/policy";
+import { canEditPatient, canEditDoctor, isManagement, actionVisible, canReadLead } from "@/lib/domain/policy";
 import { validationIssues } from "@/lib/domain/validation";
 import { request, dateTime } from "@/lib/client";
 const patientFields: [
@@ -30,7 +30,7 @@ export function LeadEditor({ initial, onSaved, onDirty }: {
 }) {
     const app = useApp(), router = useRouter(), [lead, setLead] = useState(initial), [patient, setPatient] = useState<Patient>(initial?.patient || { ...EMPTY_PATIENT }), [doctor, setDoctor] = useState<Doctor>(initial?.doctor || { ...EMPTY_DOCTOR }), [base, setBase] = useState({ patient: initial?.patient || { ...EMPTY_PATIENT }, doctor: initial?.doctor || { ...EMPTY_DOCTOR } });
     const [saving, setSaving] = useState(false), [submitting, setSubmitting] = useState(false), [error, setError] = useState<unknown>(null), [savedAt, setSavedAt] = useState(""), [override, setOverride] = useState("");
-    const lock = useRef(false), lastFailed = useRef("");
+    const lock = useRef(false), submitLock = useRef(false), lastFailed = useRef("");
     const snapshot = JSON.stringify({ patient, doctor }), dirty = snapshot !== JSON.stringify(base), user = app.user!;
     const patientEditable = !lead || canEditPatient(user, lead), doctorEditable = !lead || canEditDoctor(user, lead);
     const issues = validationIssues(patient, doctor, true);
@@ -101,22 +101,40 @@ export function LeadEditor({ initial, onSaved, onDirty }: {
         return () => clearTimeout(timer);
     }, [snapshot, saving, submitting, lead?.status, dirty]);
     async function submit() {
+        if (submitLock.current)
+            return;
+        submitLock.current = true;
         setSubmitting(true);
+        setError(null);
         try {
             const current = await save();
             if (!current)
                 return;
             const result = await request<LeadView>(`leads/${current._id}/workflow`, { body: { action: "SUBMIT", version: current.version }, activity: true });
-            setLead(result);
-            app.toast("Lead submitted", "The Generation Head has been notified.");
+            app.toast("Submitted to Q/A Department", `${result.code} is now in the Q/A queue.`);
             app.refresh();
-            router.push(`/leads/${result._id}`);
             onSaved?.(result);
+            if (!initial) {
+                // Clear only after the server confirms the transfer, so failures keep the agent's entries.
+                setLead(undefined);
+                setPatient({ ...EMPTY_PATIENT });
+                setDoctor({ ...EMPTY_DOCTOR });
+                setBase({ patient: { ...EMPTY_PATIENT }, doctor: { ...EMPTY_DOCTOR } });
+                setOverride("");
+                setSavedAt("");
+                lastFailed.current = "";
+            }
+            else {
+                setLead(result);
+                // A Generation agent loses read access once the lead leaves Generation.
+                router.push(canReadLead(user, result) ? `/leads/${result._id}` : "/leads/new");
+            }
         }
         catch (e) {
             setError(e);
         }
         finally {
+            submitLock.current = false;
             setSubmitting(false);
         }
     }
@@ -129,5 +147,5 @@ export function LeadEditor({ initial, onSaved, onDirty }: {
             app.toast("Clipboard unavailable", "Use your browser's copy command.");
         }
     }
-    return <form onSubmit={e => { e.preventDefault(); void save(); }} className="lead-editor"><ErrorBox error={error}/><div className="editor-meta"><div><span className="label-mini">AGENT</span><strong>{initial ? "Original agent retained in history" : user.name}</strong></div><div><span className="label-mini">RECORD</span><strong className="mono">{lead?.code || "New draft"}</strong></div><div className="autosave-status">{saving ? "Saving..." : dirty ? "Unsaved changes" : savedAt ? `Saved ${dateTime(savedAt)}` : lead ? "Saved to MongoDB" : "Autosave begins when you enter a first name"}</div></div><section className="form-section"><div className="section-title"><span>01</span><div><h2>Patient details</h2><p>{patientEditable ? "Complete the required information before submission." : "Read-only in this department. Patient identifiers remain masked."}</p></div></div><div className="form-grid">{patientFields.map(([key, label, required, type]) => <Field key={key} label={label} required={required} error={patient[key] ? issues[`patient.${key}`] : undefined}><input autoComplete="off" readOnly={!patientEditable} type={type || "text"} maxLength={500} value={patient[key]} onChange={e => setPatient(v => ({ ...v, [key]: e.target.value }))}/></Field>)}<Field label="Identifier type" required><select disabled={!patientEditable} value={patient.identifierKind} onChange={e => setPatient(v => ({ ...v, identifierKind: e.target.value as Patient["identifierKind"], identifier: "" }))}><option value="MEDICARE">Medicare ID</option><option value="SSN">Social Security Number</option></select></Field><Field label={patient.identifierKind === "SSN" ? "Social Security Number" : "Medicare ID"} required error={patient.identifier ? issues["patient.identifier"] : undefined} hint={patient.identifier.startsWith("****") ? "Stored value is masked. Enter a new value only to replace it." : undefined}><input autoComplete="off" readOnly={!patientEditable} maxLength={30} value={patient.identifier} onChange={e => setPatient(v => ({ ...v, identifier: e.target.value }))}/></Field></div></section><section className="form-section"><div className="section-title"><span>02</span><div><h2>Doctor details</h2><p>Accurate contact details keep the next step moving.</p></div></div><div className="form-grid">{doctorFields.map(([key, label, type]) => <Field key={key} label={label} required error={doctor[key] ? issues[`doctor.${key}`] : undefined}><div className="input-with-button"><input autoComplete="off" readOnly={!doctorEditable} type={type || "text"} maxLength={500} value={doctor[key]} onChange={e => setDoctor(v => ({ ...v, [key]: e.target.value }))}/><button type="button" className="icon-btn" aria-label={`Copy doctor ${label}`} disabled={!doctor[key]} onClick={() => void copy(doctor[key])}><Copy size={15}/></button></div></Field>)}</div></section><section className="form-section"><div className="section-title"><span>03</span><div><h2>Insurance &amp; supporting information</h2><p>Q/A may complete insurance information during review.</p></div></div><div className="form-grid"><Field label="Insurance name"><input autoComplete="off" readOnly={!patientEditable} value={patient.insuranceName} onChange={e => setPatient(v => ({ ...v, insuranceName: e.target.value }))}/></Field><Field label="Member ID"><input autoComplete="off" readOnly={!patientEditable} value={patient.memberId} onChange={e => setPatient(v => ({ ...v, memberId: e.target.value }))}/></Field><div className="attachment-hint"><Headphones size={23}/><span>Recordings are optional.<br />{lead ? <Link href={`/leads/${lead._id}?tab=files`}>Open recordings &amp; files</Link> : <small>Save a draft to attach recordings.</small>}</span></div></div>{isManagement(user) && <details className="advanced"><summary>Duplicate override (Management only)</summary><Field label="Documented override reason" hint="Used only if matching patient records are detected."><textarea value={override} onChange={e => { setOverride(e.target.value); lastFailed.current = ""; }} maxLength={2000}/></Field></details>}</section><div className="editor-footer"><span><ShieldCheck size={16}/>{valid ? "Required fields are complete" : `${Object.keys(issues).length} required or invalid fields remain`}</span><div>{doctorEditable && <Button type="submit" variant="secondary" busy={saving} disabled={submitting || (!dirty && !!lead)}><Save size={16}/>{lead?.status === "DRAFT" || !lead ? "Save draft" : "Save changes"}</Button>}{(!lead || actionVisible(user, lead, "SUBMIT")) && <Button type="button" busy={submitting} disabled={!valid || saving} onClick={() => void submit()}><Send size={16}/>Submit to Generation Head</Button>}</div></div></form>;
+    return <form onSubmit={e => { e.preventDefault(); void save(); }} className="lead-editor"><ErrorBox error={error}/><div className="editor-meta"><div><span className="label-mini">AGENT</span><strong>{initial ? "Original agent retained in history" : user.name}</strong></div><div><span className="label-mini">RECORD</span><strong className="mono">{lead?.code || "New draft"}</strong></div><div className="autosave-status">{saving ? "Saving..." : dirty ? "Unsaved changes" : savedAt ? `Saved ${dateTime(savedAt)}` : lead ? "Saved to MongoDB" : "Autosave begins when you enter a first name"}</div></div><section className="form-section"><div className="section-title"><span>01</span><div><h2>Patient details</h2><p>{patientEditable ? "Complete the required information before submission." : "Read-only in this department. Patient identifiers remain masked."}</p></div></div><div className="form-grid">{patientFields.map(([key, label, required, type]) => <Field key={key} label={label} required={required} error={patient[key] ? issues[`patient.${key}`] : undefined}><input autoComplete="off" readOnly={!patientEditable} type={type || "text"} maxLength={500} value={patient[key]} onChange={e => setPatient(v => ({ ...v, [key]: e.target.value }))}/></Field>)}<Field label="Identifier type" required><select disabled={!patientEditable} value={patient.identifierKind} onChange={e => setPatient(v => ({ ...v, identifierKind: e.target.value as Patient["identifierKind"], identifier: "" }))}><option value="MEDICARE">Medicare ID</option><option value="SSN">Social Security Number</option></select></Field><Field label={patient.identifierKind === "SSN" ? "Social Security Number" : "Medicare ID"} required error={patient.identifier ? issues["patient.identifier"] : undefined} hint={patient.identifier.startsWith("****") ? "Stored value is masked. Enter a new value only to replace it." : undefined}><input autoComplete="off" readOnly={!patientEditable} maxLength={30} value={patient.identifier} onChange={e => setPatient(v => ({ ...v, identifier: e.target.value }))}/></Field></div></section><section className="form-section"><div className="section-title"><span>02</span><div><h2>Doctor details</h2><p>Accurate contact details keep the next step moving.</p></div></div><div className="form-grid">{doctorFields.map(([key, label, type]) => <Field key={key} label={label} required error={doctor[key] ? issues[`doctor.${key}`] : undefined}><div className="input-with-button"><input autoComplete="off" readOnly={!doctorEditable} type={type || "text"} maxLength={500} value={doctor[key]} onChange={e => setDoctor(v => ({ ...v, [key]: e.target.value }))}/><button type="button" className="icon-btn" aria-label={`Copy doctor ${label}`} disabled={!doctor[key]} onClick={() => void copy(doctor[key])}><Copy size={15}/></button></div></Field>)}</div></section><section className="form-section"><div className="section-title"><span>03</span><div><h2>Insurance &amp; supporting information</h2><p>Q/A may complete insurance information during review.</p></div></div><div className="form-grid"><Field label="Insurance name"><input autoComplete="off" readOnly={!patientEditable} value={patient.insuranceName} onChange={e => setPatient(v => ({ ...v, insuranceName: e.target.value }))}/></Field><Field label="Member ID"><input autoComplete="off" readOnly={!patientEditable} value={patient.memberId} onChange={e => setPatient(v => ({ ...v, memberId: e.target.value }))}/></Field><div className="attachment-hint"><Headphones size={23}/><span>Recordings are optional.<br />{lead ? <Link href={`/leads/${lead._id}?tab=files`}>Open recordings &amp; files</Link> : <small>Save a draft to attach recordings.</small>}</span></div></div>{isManagement(user) && <details className="advanced"><summary>Duplicate override (Management only)</summary><Field label="Documented override reason" hint="Used only if matching patient records are detected."><textarea value={override} onChange={e => { setOverride(e.target.value); lastFailed.current = ""; }} maxLength={2000}/></Field></details>}</section><div className="editor-footer"><span><ShieldCheck size={16}/>{valid ? "Required fields are complete" : `${Object.keys(issues).length} required or invalid fields remain`}</span><div>{doctorEditable && <Button type="submit" variant="secondary" busy={saving} disabled={submitting || (!dirty && !!lead)}><Save size={16}/>{lead?.status === "DRAFT" || !lead ? "Save draft" : "Save changes"}</Button>}{(!lead || actionVisible(user, lead, "SUBMIT")) && <Button type="button" busy={submitting} disabled={!valid || saving} onClick={() => void submit()}><Send size={16}/>Submit to Q/A Department</Button>}</div></div></form>;
 }

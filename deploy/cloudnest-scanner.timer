@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Cloud Nest scanner repeatedly
+
+[Timer]
+OnBootSec=30s
+OnUnitInactiveSec=15s
+AccuracySec=1s
+Unit=cloudnest-scanner.service
+
+[Install]
+WantedBy=timers.target

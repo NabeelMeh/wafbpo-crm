@@ -1,0 +1,18 @@
+"use client";
+import {useState} from 'react';
+import {useApp,useLoad} from '@/components/app-provider';
+import {PageTitle,Button,ErrorBox,Badge,Field,Loading} from '@/components/ui';
+import {isManagement} from '@/lib/domain/policy';
+import {request,dateTime,pretty} from '@/lib/client';
+import type {Actor} from '@/lib/domain/types';
+type SecurityEvent={_id:string;action:string;actorName:string;actorSpecialId?:string;actorDesignation?:string;actorRole:string;at:string;data?:{userAgent?:string;ip?:string;sessionReference?:string}};
+type Device={_id:string;userAgent:string;createdAt:string;lastUsedAt:string;expiresAt:string;revokedAt?:string};
+export default function SecurityActivity(){
+ const app=useApp(),allowed=!!app.user&&isManagement(app.user),[before,setBefore]=useState(''),[userId,setUserId]=useState(''),[error,setError]=useState<unknown>(null),[busy,setBusy]=useState(false);
+ const {data,error:loadError,loading}=useLoad<{items:SecurityEvent[];nextBefore:string|null}>(allowed?`security/activity${before?`?before=${encodeURIComponent(before)}`:''}`:null,true);
+ const {data:people}=useLoad<{items:Actor[]}>(allowed?'users':null);
+ const {data:devices,refetch}=useLoad<{items:Device[]}>(allowed?`security/devices?userId=${encodeURIComponent(userId||app.user!.id)}`:null);
+ if(!app.user)return <Loading/>;if(!allowed)return <ErrorBox error="Management/Admin access is required."/>;
+ async function revoke(id:string){if(!window.confirm('Revoke this trusted device and sign out its active sessions?'))return;setBusy(true);setError(null);try{await request(`security/devices/${id}`,{method:'DELETE',body:{},activity:true});refetch();app.toast('Device revoked');}catch(e){setError(e);}finally{setBusy(false);}}
+ return <><PageTitle eyebrow="MANAGEMENT SECURITY" title="Login & Logout Activity" description="Server-recorded security events. Timestamps are stored in UTC and displayed in your browser's local timezone."/><ErrorBox error={error||loadError}/><section className="panel">{loading&&!data?<Loading/>:<div className="table-scroll"><table><thead><tr><th>DATE / TIME</th><th>USER / SPECIAL ID</th><th>DESIGNATION</th><th>ACTION</th><th>DEVICE / SESSION</th></tr></thead><tbody>{data?.items.map(x=><tr key={x._id}><td>{dateTime(x.at)}</td><td><strong>{x.actorName}</strong><small className="table-sub">{x.actorSpecialId||'Historical ID not recorded'}</small></td><td>{x.actorDesignation||pretty(x.actorRole)}</td><td><Badge value={x.action}/></td><td><span className="cell-ellipsis">{x.data?.userAgent||'-'}</span><small className="table-sub">{x.data?.ip||''} {x.data?.sessionReference||''}</small></td></tr>)}</tbody></table></div>}<div className="form-actions"><Button variant="secondary" disabled={!before} onClick={()=>setBefore('')}>Latest events</Button><Button variant="secondary" disabled={!data?.nextBefore} onClick={()=>setBefore(data?.nextBefore||'')}>Earlier events</Button></div></section><section className="panel settings-card"><h2>Trusted devices</h2><Field label="User"><select value={userId||app.user.id} onChange={e=>setUserId(e.target.value)}>{people?.items.map(u=><option value={u.id} key={u.id}>{u.name} - {u.employeeId}</option>)}</select></Field><div className="table-scroll"><table><thead><tr><th>DEVICE</th><th>VERIFIED</th><th>LAST USED</th><th>EXPIRES</th><th>ACCESS</th></tr></thead><tbody>{devices?.items.map(d=><tr key={d._id}><td>{d.userAgent}</td><td>{dateTime(d.createdAt)}</td><td>{dateTime(d.lastUsedAt)}</td><td>{dateTime(d.expiresAt)}</td><td>{d.revokedAt?<Badge value="REVOKED"/>:<Button variant="danger" busy={busy} onClick={()=>void revoke(d._id)}>Revoke device</Button>}</td></tr>)}</tbody></table></div></section></>;
+}

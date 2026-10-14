@@ -1,0 +1,33 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListVersionedPrivatePrefixes",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucketVersions"
+      ],
+      "Resource": "arn:aws:s3:::YOUR_PRIVATE_BUCKET",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "leads/*",
+            "branding/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "DeleteExactPrivateObjectVersions",
+      "Effect": "Allow",
+      "Action": [
+        "s3:DeleteObject",
+        "s3:DeleteObjectVersion"
+      ],
+      "Resource": [
+        "arn:aws:s3:::YOUR_PRIVATE_BUCKET/leads/*",
+        "arn:aws:s3:::YOUR_PRIVATE_BUCKET/branding/*"
+      ]
+    }
+  ]
+}

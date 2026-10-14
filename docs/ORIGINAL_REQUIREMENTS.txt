@@ -1,0 +1,905 @@
+# WAFBPO SOLUTIONS CRM
+## Production Master Prompt
+
+Build a complete production-ready CRM for:
+
+# WAFBPO SOLUTIONS
+
+This must be a real working application, not a mockup.
+
+---
+
+# TECH STACK & DEPLOYMENT
+
+Use:
+
+- Next.js
+- React
+- TypeScript
+- Tailwind CSS
+- Modern professional component system
+- MongoDB Atlas
+- Vercel
+
+Deploy:
+
+## Frontend
+Vercel
+
+## Backend / APIs
+Vercel Functions / Next.js Server APIs
+
+## Database
+MongoDB Atlas
+
+Use proper MongoDB connection pooling suitable for Vercel Functions.
+
+## Real-Time System
+Use Vercel WebSockets with Fluid Compute or equivalent reliable real-time architecture for:
+
+- Incoming lead alerts
+- Buzzer
+- Popup notifications
+- Online/Offline presence
+- Live dashboard updates
+
+## Files
+
+Do not store large PDFs/audio files directly inside MongoDB documents.
+
+Use secure private object/file storage for:
+
+- PDFs
+- Call Recordings
+- Attachments
+
+Store file metadata and secure references in MongoDB.
+
+---
+
+# DEPARTMENTS
+
+Keep exactly this order:
+
+1. Generation Department
+2. Q/A Department
+3. Chasing Department
+4. Patient Verification Department
+5. Management Department
+
+Main lead flow:
+
+Generation  
+→ Q/A  
+→ Chasing  
+→ Management
+
+Patient Verification remains separately controlled by Management.
+
+---
+
+# USER ROLES
+
+Create:
+
+- Super Admin
+- Management User
+- Generation Head
+- Generation Agent
+- Q/A Head
+- Q/A Agent
+- Chasing Head
+- Chasing Agent
+- Patient Verification Head
+- Patient Verification Agent
+
+Use strict backend Role-Based + Department-Based permissions.
+
+---
+
+# SUPER ADMIN / MANAGEMENT
+
+Management has complete authorized access.
+
+Can:
+
+- Create users
+- Set username
+- Set/reset password
+- Activate/deactivate users
+- Lock/unlock users
+- Assign roles
+- Assign one or multiple departments
+- Assign Heads
+- Assign Agents under Heads
+- View every department
+- View reports
+- View lead history
+- View audit logs
+- Upload datasets
+- Reassign work
+- Reopen records
+- Archive records
+
+Never display existing plain-text passwords.
+
+---
+
+# USER ACTIVE / INACTIVE STATUS
+
+Every user must have:
+
+## Account Status
+
+- Active
+- Inactive
+- Suspended
+- Locked
+- Deactivated
+
+## Live Presence
+
+- Online — Green
+- Away — Yellow
+- Offline — Gray
+- Inactive Account — Red/Gray
+
+All Department Heads and Management should have:
+
+# LIVE TEAM STATUS
+
+Display:
+
+- Agent Name
+- Employee ID
+- Department
+- Role
+- Account Status
+- Online/Away/Offline
+- Last Login
+- Last Activity
+
+Heads may see basic status of Agents across departments but must NOT automatically receive access to their private leads.
+
+---
+
+# REAL-TIME INCOMING LEAD ALERT
+
+Whenever a relevant new lead is received or assigned:
+
+### Play Buzzer
+
+and
+
+### Show Popup
+
+and
+
+### Add Notification
+
+Example:
+
+NEW LEAD RECEIVED
+
+Lead ID: WAF-2026-000125  
+From: Generation  
+To: Q/A  
+Agent: John  
+Received: 10:32 AM
+
+Buttons:
+
+- View Lead
+- Acknowledge
+
+Apply to:
+
+- Generation
+- Q/A
+- Chasing
+- Patient Verification
+- Management
+
+Do not notify unrelated users.
+
+For bulk records:
+
+Do not play hundreds of sounds.
+
+Example:
+
+"250 New Leads Received"
+
+Play one grouped buzzer.
+
+Prevent duplicate buzzers caused by refresh, reconnect or multiple tabs.
+
+---
+
+# LEAD ID
+
+Every lead gets permanent unique ID:
+
+WAF-2026-000001
+
+Lead ID must never change.
+
+---
+
+# GENERATION DEPARTMENT
+
+## Generation Form
+
+### Agent Name *
+Auto-fill logged-in Agent.
+
+### Patient Details
+
+- First Name *
+- Last Name *
+- DOB *
+- Address *
+- City *
+- State *
+- Zip Code *
+- Phone Number *
+- Medicare ID or Social Security Number *
+- Height *
+- Weight *
+- Shoe Size Optional
+- Brace *
+- Call Recording Optional
+
+### Doctor Details
+
+- Doctor Name *
+- NPI *
+- Address *
+- City *
+- State *
+- Zip Code *
+- Phone Number *
+- Fax Number *
+
+Submit button must remain disabled until all mandatory information is valid.
+
+Also provide:
+
+- Save Draft
+- Autosave
+
+---
+
+# GENERATION HEAD
+
+Submitted lead first goes to Generation Head.
+
+Head can:
+
+- Review
+- Select one/multiple leads
+- Send to Q/A
+- Return to Agent with reason
+
+After sending to Q/A:
+
+Remove from active Generation queue but preserve history.
+
+Q/A receives real-time buzzer + popup.
+
+---
+
+# DUPLICATE DETECTION
+
+Before lead creation check:
+
+- Medicare ID
+- SSN
+- Member ID
+- Phone
+- Name + DOB
+- Phone + DOB
+
+Show:
+
+POSSIBLE DUPLICATE
+
+Only authorized users can override with mandatory reason.
+
+---
+
+# Q/A DEPARTMENT
+
+Q/A can review and edit the complete authorized lead.
+
+Add:
+
+- Insurance Name
+- Member ID
+
+Add one-click copy buttons for:
+
+- Doctor Name
+- NPI
+- Address
+- Phone
+- Fax
+- Member ID
+- Other permitted fields
+
+QA final options:
+
+## GOOD
+
+Move automatically to Chasing.
+
+Remove from Q/A active queue.
+
+Notify Chasing with:
+
+- Buzzer
+- Popup
+- Notification
+
+## BAD
+
+Require:
+
+- Bad Reason
+- Comment
+
+Return lead to original Generation Agent.
+
+Color:
+
+RED
+
+Show:
+
+REWORK REQUIRED
+
+Trigger Generation Agent/Head notification.
+
+---
+
+# REWORK & RESUBMISSION
+
+Generation Agent can:
+
+- Open Bad lead
+- Correct information
+- Hear old recordings
+- Add new recording
+- Resubmit
+
+Never delete previous recordings.
+
+Show:
+
+RESUBMITTED
+
+Maintain:
+
+- Original Submission
+- Resubmission #1
+- Resubmission #2
+- etc.
+
+When resubmitted:
+
+Q/A receives special real-time alert.
+
+---
+
+# RECORDINGS
+
+Each lead can contain unlimited recordings.
+
+Store:
+
+- Recording URL/File
+- Added By
+- Department
+- Date
+- Time
+- Description
+
+Do not overwrite previous recordings.
+
+Authorized departments can hear recordings according to permissions.
+
+---
+
+# CHASING DEPARTMENT
+
+QA GOOD leads automatically enter Chasing.
+
+Immediately enable:
+
+# LOG CALL
+
+Store:
+
+- Date
+- Time
+- Number
+- Outcome
+- Comments
+- Follow-up Date
+- Agent
+
+Maintain unlimited logs.
+
+---
+
+# CHASING AGENT PERMISSIONS
+
+Can edit/copy only:
+
+- Doctor Name
+- Doctor NPI
+- Doctor Address
+- Doctor City
+- Doctor State
+- Doctor Zip
+- Doctor Phone
+- Doctor Fax
+
+Can also:
+
+- Edit Fax Date
+- Add Comments
+- Log Calls
+- Upload PDFs
+- View/Download allowed PDFs
+
+Cannot:
+
+- Edit Brace
+- Final Complete
+- Final Deny
+
+---
+
+# CHASING HEAD
+
+Can:
+
+- Receive datasets from Management
+- Assign to Agents
+- Bulk Assign
+- Reassign
+- Pull Back
+- Monitor work
+
+Final options:
+
+### DENY
+Red.
+
+Require reason.
+
+Remain in Denied.
+
+### INCOMPLETE
+Sky Blue.
+
+Require:
+
+- Reason
+- Follow-up Date
+
+Remain visible to Head + Agent.
+
+### COMPLETE
+Move automatically to Management.
+
+Trigger:
+
+- Management buzzer
+- Popup
+- Notification
+
+---
+
+# FAX SYSTEM
+
+Store:
+
+- Current Fax Date
+- Previous Fax Dates
+- Fax Sent Date
+- Fax Received Date
+- Fax Number
+- Fax Status
+- Attempts
+- Follow-up Date
+- Comments
+
+Never overwrite Fax history.
+
+Management must see complete history.
+
+---
+
+# CHASING DATA GRID
+
+Create Excel-style database-backed grid.
+
+Must support more than 1 million MongoDB records.
+
+Use:
+
+- Server-side pagination
+- Server-side search
+- Filters
+- Sorting
+- Virtual scrolling
+- MongoDB indexes
+
+Support:
+
+- CSV Import
+- XLSX Import
+- CSV Export
+- XLSX Export
+
+Do not load 1M records into browser at once.
+
+---
+
+# IMPORT SYSTEM
+
+Management upload flow:
+
+1. Upload CSV/XLSX
+2. Detect columns
+3. Map columns
+4. Preview
+5. Validate
+6. Import
+7. Show report
+
+Show:
+
+- Total
+- Imported
+- Duplicate
+- Skipped
+- Failed
+
+Allow downloading error report.
+
+---
+
+# PDFs
+
+Allow multiple PDFs per record.
+
+Store:
+
+- File Name
+- Uploaded By
+- Department
+- Date
+- Time
+
+Actions according to permission:
+
+- Preview
+- Download
+- Upload
+- Copy secure reference
+
+Agents cannot permanently delete historical PDFs.
+
+---
+
+# PATIENT VERIFICATION
+
+Keep separate from Chasing.
+
+Management can:
+
+- Upload data
+- Route records
+- Assign datasets
+
+PV Head distributes records to PV Agents.
+
+PV Agent can:
+
+- Log Call
+- Edit allowed Doctor fields
+- Edit Fax
+- Add Comments
+- Upload PDF
+- Add verification results
+
+Add:
+
+- Verification Status
+- Verification Date
+- Verification Result
+- Verification Reason
+- Verification Comments
+- Follow-up Date
+- Recording
+- Verified By
+
+Statuses:
+
+- Not Contacted
+- Attempted
+- Contacted
+- Verified
+- Not Verified
+- Callback Required
+- Unable to Reach
+- Refused
+
+PV Head final options:
+
+- Deny
+- Incomplete
+- Complete
+
+Complete moves to Management and triggers buzzer + popup.
+
+---
+
+# MANAGEMENT DEPARTMENT
+
+Management receives completed records from:
+
+- Chasing
+- Patient Verification
+
+Clearly show source.
+
+Management can:
+
+- Review
+- Finalize
+- Reopen
+- Archive
+- View all recordings
+- View PDFs
+- View Fax history
+- View comments
+- View complete timeline
+- View audit history
+
+Reopen requires:
+
+- Reason
+- Destination Department
+- Comment
+
+Destination department receives new buzzer + notification.
+
+---
+
+# LEAD HISTORY
+
+Never lose historical information.
+
+Maintain:
+
+- Creation
+- Department transfers
+- Assignments
+- Reassignments
+- QA Good/Bad
+- Rework
+- Resubmissions
+- Recordings
+- Calls
+- Fax changes
+- Comments
+- PDFs
+- Complete
+- Reopen
+- Archive
+
+---
+
+# AUDIT LOG
+
+Every important action must record:
+
+- User
+- Username
+- Role
+- Department
+- Lead ID
+- Action
+- Old Value
+- New Value
+- Date
+- Time
+
+Audit history must not be silently editable/deletable.
+
+---
+
+# REPORTING
+
+Calculate Agent reports:
+
+## Per Day
+## Per Week
+## Per Month
+## Custom Date
+
+### Generation
+
+- Created
+- Submitted
+- QA Good
+- QA Bad
+- Rework
+- Resubmitted
+
+### Q/A
+
+- Reviewed
+- Good
+- Bad
+- Resubmitted Reviewed
+
+### Chasing
+
+- Assigned
+- Worked
+- Calls
+- Fax Updates
+- PDFs
+- Incomplete
+- Denied
+- Completed
+
+### Patient Verification
+
+- Assigned
+- Calls
+- Verified
+- Not Verified
+- Incomplete
+- Denied
+- Complete
+
+Keep Agent attribution even if Head performs final Complete action.
+
+---
+
+# SEARCH & FILTERS
+
+Search by:
+
+- Lead ID
+- Patient
+- Phone
+- Medicare/SSN
+- Insurance
+- Member ID
+- Doctor
+- NPI
+- Doctor Phone
+- Fax
+- Agent
+- Campaign
+- Batch
+
+Filter:
+
+- Department
+- Agent
+- Head
+- Status
+- Date
+- Good
+- Bad
+- Rework
+- Resubmitted
+- Incomplete
+- Denied
+- Complete
+
+---
+
+# SECURITY
+
+Implement:
+
+- HTTPS
+- Secure password hashing
+- MFA support
+- MongoDB security
+- Backend permission validation
+- Row-level security
+- Rate limiting
+- Secure sessions
+- Session timeout
+- Sensitive field masking
+- Private file URLs
+- Audit logging
+
+Mask sensitive values such as SSN/Medicare where required.
+
+Only authorized users can reveal them.
+
+---
+
+# BACKUPS & PRODUCTION
+
+MongoDB Atlas must have proper backup strategy.
+
+Implement:
+
+- Database backups
+- File backups
+- Error monitoring
+- API error logs
+- Import failure logs
+- Real-time connection error handling
+
+Use environment variables on Vercel for:
+
+- MongoDB URI
+- Auth secrets
+- File-storage credentials
+- Other private API keys
+
+Never hardcode secrets.
+
+---
+
+# FINAL REQUIREMENT
+
+The CRM must be a real production system for WAFBPO SOLUTIONS.
+
+Department order must remain:
+
+Generation  
+→ Q/A  
+→ Chasing  
+→ Patient Verification  
+→ Management
+
+Real Generation workflow:
+
+Generation → Q/A → Chasing → Management
+
+Patient Verification remains Management-controlled.
+
+Every relevant incoming lead/assignment must support:
+
+# BUZZER + POPUP + NOTIFICATION
+
+All Heads and Management must have a:
+
+# LIVE TEAM STATUS
+
+showing:
+
+- Active/Inactive Account
+- Online
+- Away
+- Offline
+- Last Login
+- Last Activity
+
+Frontend and Backend must be deployed on:
+
+# VERCEL
+
+Database must be:
+
+# MONGODB ATLAS
+
+Do not remove existing working features when implementing new modules.
+
+Do not create placeholder functionality.
+
+Every button, status, permission and workflow must actually work through the backend and MongoDB.

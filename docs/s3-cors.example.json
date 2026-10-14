@@ -1,0 +1,18 @@
+[
+  {
+    "AllowedHeaders": [
+      "content-type"
+    ],
+    "AllowedMethods": [
+      "POST"
+    ],
+    "AllowedOrigins": [
+      "https://YOUR_CRM_DOMAIN"
+    ],
+    "ExposeHeaders": [
+      "ETag",
+      "x-amz-version-id"
+    ],
+    "MaxAgeSeconds": 300
+  }
+]

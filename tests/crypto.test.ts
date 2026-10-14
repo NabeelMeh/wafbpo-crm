@@ -1,0 +1,40 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
+import { seal, unseal, hashPassword, verifyPassword, blind, digest, base32, decodeBase32, totp, verifyTotp, sameSecret } from "../src/lib/crypto.ts";
+import { duplicateKeys, searchTokens, queryToken, mask, csvSafe } from "../src/lib/search.ts";
+import { EMPTY_PATIENT, EMPTY_DOCTOR } from "../src/lib/domain/types.ts";
+process.env.DATA_ENCRYPTION_KEY = Buffer.alloc(32, 17).toString("base64");
+process.env.SEARCH_HMAC_KEY = Buffer.alloc(32, 33).toString("base64");
+test("AES-GCM encrypts and decrypts structured patient data", () => { const value = { name: "Synthetic Patient", ssn: "999999999" }; const encoded = seal(value, "patient:1"); assert.deepEqual(unseal(encoded, "patient:1"), value); assert.ok(!encoded.includes("Synthetic")); });
+test("Encryption is randomized for repeated values", () => assert.notEqual(seal({ test: 1 }, "patient:1"), seal({ test: 1 }, "patient:1")));
+test("Encrypted values cannot be swapped between record contexts", () => assert.throws(() => unseal(seal({ test: 1 }, "patient:1"), "patient:2")));
+test("Ciphertext tampering is rejected", () => { const parts = seal({ test: 1 }, "a").split("."); const b = Buffer.from(parts[3], "base64url"); b[0] ^= 1; parts[3] = b.toString("base64url"); assert.throws(() => unseal(parts.join("."), "a")); });
+test("Wrong encryption keys cannot decrypt data", () => { const encoded = seal({ test: 1 }, "a"), key = process.env.DATA_ENCRYPTION_KEY; process.env.DATA_ENCRYPTION_KEY = Buffer.alloc(32, 18).toString("base64"); assert.throws(() => unseal(encoded, "a")); process.env.DATA_ENCRYPTION_KEY = key; });
+test("Encryption refuses to operate with an invalid key", () => { const key = process.env.DATA_ENCRYPTION_KEY; process.env.DATA_ENCRYPTION_KEY = "short"; assert.throws(() => seal({}, "a")); process.env.DATA_ENCRYPTION_KEY = key; });
+test("Passwords use salted scrypt and verify correctly", async () => { const password = "A secure synthetic passphrase"; const hash = await hashPassword(password); assert.ok(hash.startsWith("scrypt$32768$8$1$")); assert.ok(!hash.includes(password)); assert.equal(await verifyPassword(password, hash), true); assert.equal(await verifyPassword("wrong", hash), false); });
+test("Password hashes differ for the same password", async () => assert.notEqual(await hashPassword("Synthetic passphrase"), await hashPassword("Synthetic passphrase")));
+test("Malformed password hashes are rejected", async () => assert.equal(await verifyPassword("test", "not-a-hash"), false));
+test("Blind indexes are deterministic keyed digests", () => { assert.equal(blind("same"), blind("same")); assert.notEqual(blind("same"), digest("same")); assert.equal(blind("same").length, 64); });
+test("Duplicate identifiers ignore formatting", () => { const a = { ...EMPTY_PATIENT, identifierKind: "SSN" as const, identifier: "999-99-9999" }, b = { ...a, identifier: "999999999" }; assert.deepEqual(duplicateKeys(a), duplicateKeys(b)); });
+test("Phone duplicate checks ignore punctuation", () => { const a = { ...EMPTY_PATIENT, phone: "(202) 555-0100" }, b = { ...a, phone: "2025550100" }; assert.deepEqual(duplicateKeys(a), duplicateKeys(b)); });
+test("Name plus date of birth contributes a duplicate key", () => assert.ok(duplicateKeys({ ...EMPTY_PATIENT, firstName: "Test", lastName: "Person", dob: "1980-01-01" }).length > 0));
+test("Missing data never produces a shared empty duplicate key", () => assert.deepEqual(duplicateKeys(EMPTY_PATIENT), []));
+test("Search tokens support prefixes without exposing patient text", () => { const list = searchTokens({ ...EMPTY_PATIENT, firstName: "Synthetic", lastName: "Person" }, EMPTY_DOCTOR, "WAF-2026-000001", "", ""), token = queryToken("synt"); assert.ok(token && list.includes(token)); assert.ok(list.every(x => /^[0-9a-f]{64}$/.test(x))); });
+test("Single-character searches are not indexed", () => assert.equal(queryToken("s"), null));
+test("Masks retain only the final four characters", () => assert.equal(mask("999999999"), "****9999"));
+test("Empty identifiers remain empty", () => assert.equal(mask(""), ""));
+for (const formula of ["=1+1", "+SUM(A1)", "-1+2", "@SUM(A1)", "  =1+1", "\t=1+1", "\r=1+1"])
+    test(`CSV export neutralizes formula prefix ${JSON.stringify(formula)}`, () => assert.ok(csvSafe(formula).startsWith("'")));
+test("Ordinary CSV text is unchanged", () => assert.equal(csvSafe("Test person"), "Test person"));
+test("Base32 matches the RFC example", () => assert.equal(base32(Buffer.from("foo")), "MZXW6"));
+test("Base32 supports round trips", () => { const b = randomBytes(20); assert.deepEqual(decodeBase32(base32(b)), b); });
+test("TOTP matches RFC 6238 SHA1 vectors", () => {
+    const s = base32(Buffer.from("12345678901234567890"));
+    for (const [seconds, expected] of [[59, "94287082"], [1111111109, "07081804"], [1111111111, "14050471"], [1234567890, "89005924"], [2000000000, "69279037"], [20000000000, "65353130"]] as const)
+        assert.equal(totp(s, Math.floor(seconds / 30), 8), expected);
+});
+test("TOTP verifies a current six-digit code", () => { const s = base32(Buffer.from("12345678901234567890")), now = 1234567890000, step = Math.floor(now / 30000); assert.equal(verifyTotp(s, totp(s, step), now), step); });
+test("TOTP rejects a replayed time step", () => { const s = base32(Buffer.from("12345678901234567890")), now = 1234567890000, step = Math.floor(now / 30000); assert.equal(verifyTotp(s, totp(s, step), now, step), null); });
+test("TOTP rejects malformed verification codes", () => assert.equal(verifyTotp("MZXW6", "abc123"), null));
+test("Secret comparisons check equal length and value", () => { assert.equal(sameSecret("abc", "abc"), true); assert.equal(sameSecret("abc", "abd"), false); assert.equal(sameSecret("abc", "abcd"), false); });

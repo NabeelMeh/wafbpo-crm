@@ -1,0 +1,728 @@
+
+> wafbpo-solutions-crm@0.1.0 test
+> node --experimental-strip-types --test tests/*.test.ts
+
+TAP version 13
+# (node:1439) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: AES-GCM encrypts and decrypts structured patient data
+ok 1 - AES-GCM encrypts and decrypts structured patient data
+  ---
+  duration_ms: 2.265736
+  type: 'test'
+  ...
+# Subtest: Encryption is randomized for repeated values
+ok 2 - Encryption is randomized for repeated values
+  ---
+  duration_ms: 0.367274
+  type: 'test'
+  ...
+# Subtest: Encrypted values cannot be swapped between record contexts
+ok 3 - Encrypted values cannot be swapped between record contexts
+  ---
+  duration_ms: 0.30477
+  type: 'test'
+  ...
+# Subtest: Ciphertext tampering is rejected
+ok 4 - Ciphertext tampering is rejected
+  ---
+  duration_ms: 0.449578
+  type: 'test'
+  ...
+# Subtest: Wrong encryption keys cannot decrypt data
+ok 5 - Wrong encryption keys cannot decrypt data
+  ---
+  duration_ms: 0.353082
+  type: 'test'
+  ...
+# Subtest: Encryption refuses to operate with an invalid key
+ok 6 - Encryption refuses to operate with an invalid key
+  ---
+  duration_ms: 0.149586
+  type: 'test'
+  ...
+# Subtest: Passwords use salted scrypt and verify correctly
+ok 7 - Passwords use salted scrypt and verify correctly
+  ---
+  duration_ms: 254.657982
+  type: 'test'
+  ...
+# Subtest: Password hashes differ for the same password
+ok 8 - Password hashes differ for the same password
+  ---
+  duration_ms: 163.142111
+  type: 'test'
+  ...
+# Subtest: Malformed password hashes are rejected
+ok 9 - Malformed password hashes are rejected
+  ---
+  duration_ms: 0.51054
+  type: 'test'
+  ...
+# Subtest: Blind indexes are deterministic keyed digests
+ok 10 - Blind indexes are deterministic keyed digests
+  ---
+  duration_ms: 0.751563
+  type: 'test'
+  ...
+# Subtest: Duplicate identifiers ignore formatting
+ok 11 - Duplicate identifiers ignore formatting
+  ---
+  duration_ms: 0.830683
+  type: 'test'
+  ...
+# Subtest: Phone duplicate checks ignore punctuation
+ok 12 - Phone duplicate checks ignore punctuation
+  ---
+  duration_ms: 0.215224
+  type: 'test'
+  ...
+# Subtest: Name plus date of birth contributes a duplicate key
+ok 13 - Name plus date of birth contributes a duplicate key
+  ---
+  duration_ms: 0.148624
+  type: 'test'
+  ...
+# Subtest: Missing data never produces a shared empty duplicate key
+ok 14 - Missing data never produces a shared empty duplicate key
+  ---
+  duration_ms: 0.066
+  type: 'test'
+  ...
+# Subtest: Search tokens support prefixes without exposing patient text
+ok 15 - Search tokens support prefixes without exposing patient text
+  ---
+  duration_ms: 0.842821
+  type: 'test'
+  ...
+# Subtest: Single-character searches are not indexed
+ok 16 - Single-character searches are not indexed
+  ---
+  duration_ms: 0.07312
+  type: 'test'
+  ...
+# Subtest: Masks retain only the final four characters
+ok 17 - Masks retain only the final four characters
+  ---
+  duration_ms: 0.062464
+  type: 'test'
+  ...
+# Subtest: Empty identifiers remain empty
+ok 18 - Empty identifiers remain empty
+  ---
+  duration_ms: 0.04647
+  type: 'test'
+  ...
+# Subtest: CSV export neutralizes formula prefix "=1+1"
+ok 19 - CSV export neutralizes formula prefix "=1+1"
+  ---
+  duration_ms: 0.090847
+  type: 'test'
+  ...
+# Subtest: CSV export neutralizes formula prefix "+SUM(A1)"
+ok 20 - CSV export neutralizes formula prefix "+SUM(A1)"
+  ---
+  duration_ms: 0.063456
+  type: 'test'
+  ...
+# Subtest: CSV export neutralizes formula prefix "-1+2"
+ok 21 - CSV export neutralizes formula prefix "-1+2"
+  ---
+  duration_ms: 0.035834
+  type: 'test'
+  ...
+# Subtest: CSV export neutralizes formula prefix "@SUM(A1)"
+ok 22 - CSV export neutralizes formula prefix "@SUM(A1)"
+  ---
+  duration_ms: 0.031928
+  type: 'test'
+  ...
+# Subtest: CSV export neutralizes formula prefix "  =1+1"
+ok 23 - CSV export neutralizes formula prefix "  =1+1"
+  ---
+  duration_ms: 0.031177
+  type: 'test'
+  ...
+# Subtest: CSV export neutralizes formula prefix "\\t=1+1"
+ok 24 - CSV export neutralizes formula prefix "\\t=1+1"
+  ---
+  duration_ms: 0.031007
+  type: 'test'
+  ...
+# Subtest: CSV export neutralizes formula prefix "\\r=1+1"
+ok 25 - CSV export neutralizes formula prefix "\\r=1+1"
+  ---
+  duration_ms: 0.038638
+  type: 'test'
+  ...
+# Subtest: Ordinary CSV text is unchanged
+ok 26 - Ordinary CSV text is unchanged
+  ---
+  duration_ms: 0.087742
+  type: 'test'
+  ...
+# Subtest: Base32 matches the RFC example
+ok 27 - Base32 matches the RFC example
+  ---
+  duration_ms: 0.11238
+  type: 'test'
+  ...
+# Subtest: Base32 supports round trips
+ok 28 - Base32 supports round trips
+  ---
+  duration_ms: 0.29855
+  type: 'test'
+  ...
+# Subtest: TOTP matches RFC 6238 SHA1 vectors
+ok 29 - TOTP matches RFC 6238 SHA1 vectors
+  ---
+  duration_ms: 0.297809
+  type: 'test'
+  ...
+# Subtest: TOTP verifies a current six-digit code
+ok 30 - TOTP verifies a current six-digit code
+  ---
+  duration_ms: 0.308575
+  type: 'test'
+  ...
+# Subtest: TOTP rejects a replayed time step
+ok 31 - TOTP rejects a replayed time step
+  ---
+  duration_ms: 0.228906
+  type: 'test'
+  ...
+# Subtest: TOTP rejects malformed verification codes
+ok 32 - TOTP rejects malformed verification codes
+  ---
+  duration_ms: 0.07984
+  type: 'test'
+  ...
+# Subtest: Secret comparisons check equal length and value
+ok 33 - Secret comparisons check equal length and value
+  ---
+  duration_ms: 0.065098
+  type: 'test'
+  ...
+# (node:1440) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: Department order exactly matches the specification
+ok 34 - Department order exactly matches the specification
+  ---
+  duration_ms: 1.488704
+  type: 'test'
+  ...
+# Subtest: Creator can read their own draft
+ok 35 - Creator can read their own draft
+  ---
+  duration_ms: 0.181273
+  type: 'test'
+  ...
+# Subtest: Another agent cannot read a draft
+ok 36 - Another agent cannot read a draft
+  ---
+  duration_ms: 0.13279
+  type: 'test'
+  ...
+# Subtest: Heads do not see unsubmitted drafts by default
+ok 37 - Heads do not see unsubmitted drafts by default
+  ---
+  duration_ms: 0.082074
+  type: 'test'
+  ...
+# Subtest: Management can read a draft
+ok 38 - Management can read a draft
+  ---
+  duration_ms: 0.07954
+  type: 'test'
+  ...
+# Subtest: Inactive users have no lead access even as Super Admin
+ok 39 - Inactive users have no lead access even as Super Admin
+  ---
+  duration_ms: 0.101333
+  type: 'test'
+  ...
+# Subtest: Generation loses access after a lead moves to QA
+ok 40 - Generation loses access after a lead moves to QA
+  ---
+  duration_ms: 0.075023
+  type: 'test'
+  ...
+# Subtest: QA head can see unassigned QA intake
+ok 41 - QA head can see unassigned QA intake
+  ---
+  duration_ms: 0.094032
+  type: 'test'
+  ...
+# Subtest: QA agent cannot see unassigned intake
+ok 42 - QA agent cannot see unassigned intake
+  ---
+  duration_ms: 0.217468
+  type: 'test'
+  ...
+# Subtest: Assigned QA agent can read their own lead
+ok 43 - Assigned QA agent can read their own lead
+  ---
+  duration_ms: 0.315095
+  type: 'test'
+  ...
+# Subtest: All Heads have team status access
+ok 44 - All Heads have team status access
+  ---
+  duration_ms: 0.157007
+  type: 'test'
+  ...
+# Subtest: Agents do not get the cross-department team view
+ok 45 - Agents do not get the cross-department team view
+  ---
+  duration_ms: 0.068794
+  type: 'test'
+  ...
+# Subtest: Cross-department team visibility does not grant lead access
+ok 46 - Cross-department team visibility does not grant lead access
+  ---
+  duration_ms: 0.061412
+  type: 'test'
+  ...
+# Subtest: A Chasing agent may edit doctor fields
+ok 47 - A Chasing agent may edit doctor fields
+  ---
+  duration_ms: 0.080351
+  type: 'test'
+  ...
+# Subtest: A Chasing agent may not edit patient or brace fields
+ok 48 - A Chasing agent may not edit patient or brace fields
+  ---
+  duration_ms: 0.078899
+  type: 'test'
+  ...
+# Subtest: A Chasing agent may not reveal identifiers
+ok 49 - A Chasing agent may not reveal identifiers
+  ---
+  duration_ms: 0.973798
+  type: 'test'
+  ...
+# Subtest: A PV agent may not edit patient fields
+ok 50 - A PV agent may not edit patient fields
+  ---
+  duration_ms: 0.087883
+  type: 'test'
+  ...
+# Subtest: Finalized records are not editable even by Management
+ok 51 - Finalized records are not editable even by Management
+  ---
+  duration_ms: 0.057347
+  type: 'test'
+  ...
+# Subtest: Staff cannot read archived records
+ok 52 - Staff cannot read archived records
+  ---
+  duration_ms: 0.053811
+  type: 'test'
+  ...
+# Subtest: Only Management controls direct PV intake
+ok 53 - Only Management controls direct PV intake
+  ---
+  duration_ms: 0.290188
+  type: 'test'
+  ...
+# Subtest: New leads cannot bypass Generation by starting in QA
+ok 54 - New leads cannot bypass Generation by starting in QA
+  ---
+  duration_ms: 0.078588
+  type: 'test'
+  ...
+# Subtest: Generation submission goes to the Generation Head
+ok 55 - Generation submission goes to the Generation Head
+  ---
+  duration_ms: 0.70269
+  type: 'test'
+  ...
+# Subtest: Agents cannot approve their own Generation submission
+ok 56 - Agents cannot approve their own Generation submission
+  ---
+  duration_ms: 0.127633
+  type: 'test'
+  ...
+# Subtest: Generation Head approval sends an unassigned QA intake
+ok 57 - Generation Head approval sends an unassigned QA intake
+  ---
+  duration_ms: 0.084818
+  type: 'test'
+  ...
+# Subtest: Generation Head cannot act on another department
+ok 58 - Generation Head cannot act on another department
+  ---
+  duration_ms: 0.075765
+  type: 'test'
+  ...
+# Subtest: QA GOOD automatically sends the lead to Chasing, never PV
+ok 59 - QA GOOD automatically sends the lead to Chasing, never PV
+  ---
+  duration_ms: 0.068183
+  type: 'test'
+  ...
+# Subtest: QA BAD requires both reason and comment
+ok 60 - QA BAD requires both reason and comment
+  ---
+  duration_ms: 0.113241
+  type: 'test'
+  ...
+# Subtest: QA BAD returns to the original Generation agent
+ok 61 - QA BAD returns to the original Generation agent
+  ---
+  duration_ms: 0.085399
+  type: 'test'
+  ...
+# Subtest: QA rework resubmission goes directly back to QA
+ok 62 - QA rework resubmission goes directly back to QA
+  ---
+  duration_ms: 0.081773
+  type: 'test'
+  ...
+# Subtest: Head-returned Generation rework does not bypass the Head
+ok 63 - Head-returned Generation rework does not bypass the Head
+  ---
+  duration_ms: 0.121454
+  type: 'test'
+  ...
+# Subtest: Stale versions are rejected
+ok 64 - Stale versions are rejected
+  ---
+  duration_ms: 0.30488
+  type: 'test'
+  ...
+# Subtest: Lead identifier and creation date survive transitions
+ok 65 - Lead identifier and creation date survive transitions
+  ---
+  duration_ms: 0.090416
+  type: 'test'
+  ...
+# Subtest: Chasing agent cannot execute DENY
+ok 66 - Chasing agent cannot execute DENY
+  ---
+  duration_ms: 0.087262
+  type: 'test'
+  ...
+# Subtest: Chasing agent cannot execute COMPLETE
+ok 67 - Chasing agent cannot execute COMPLETE
+  ---
+  duration_ms: 0.04668
+  type: 'test'
+  ...
+# Subtest: Chasing agent cannot execute INCOMPLETE
+ok 68 - Chasing agent cannot execute INCOMPLETE
+  ---
+  duration_ms: 0.044848
+  type: 'test'
+  ...
+# Subtest: Chasing Head completes to Management and preserves agent credit
+ok 69 - Chasing Head completes to Management and preserves agent credit
+  ---
+  duration_ms: 0.081082
+  type: 'test'
+  ...
+# Subtest: PV Head completes to Management with a distinct source
+ok 70 - PV Head completes to Management with a distinct source
+  ---
+  duration_ms: 0.206752
+  type: 'test'
+  ...
+# Subtest: INCOMPLETE requires a future follow-up
+ok 71 - INCOMPLETE requires a future follow-up
+  ---
+  duration_ms: 0.143676
+  type: 'test'
+  ...
+# Subtest: INCOMPLETE retains the existing department and assignee
+ok 72 - INCOMPLETE retains the existing department and assignee
+  ---
+  duration_ms: 0.150036
+  type: 'test'
+  ...
+# Subtest: DENY requires a reason and stays in the same department
+ok 73 - DENY requires a reason and stays in the same department
+  ---
+  duration_ms: 0.137287
+  type: 'test'
+  ...
+# Subtest: Only Management can route work into PV
+ok 74 - Only Management can route work into PV
+  ---
+  duration_ms: 0.103256
+  type: 'test'
+  ...
+# Subtest: REOPEN needs reason, comment and destination
+ok 75 - REOPEN needs reason, comment and destination
+  ---
+  duration_ms: 0.110937
+  type: 'test'
+  ...
+# Subtest: Finalization is only allowed from Management review
+ok 76 - Finalization is only allowed from Management review
+  ---
+  duration_ms: 0.07976
+  type: 'test'
+  ...
+# Subtest: Archiving requires a reason and prevents ordinary workflow
+ok 77 - Archiving requires a reason and prevents ordinary workflow
+  ---
+  duration_ms: 0.083446
+  type: 'test'
+  ...
+# Subtest: A head can assign only their own department agents
+ok 78 - A head can assign only their own department agents
+  ---
+  duration_ms: 0.0995
+  type: 'test'
+  ...
+# Subtest: Management can assign across heads, not across mismatched departments
+ok 79 - Management can assign across heads, not across mismatched departments
+  ---
+  duration_ms: 0.047852
+  type: 'test'
+  ...
+# Subtest: Inactive agents cannot receive assignments
+ok 80 - Inactive agents cannot receive assignments
+  ---
+  duration_ms: 0.054342
+  type: 'test'
+  ...
+# Subtest: PULL_BACK clears the assignee
+ok 81 - PULL_BACK clears the assignee
+  ---
+  duration_ms: 0.095895
+  type: 'test'
+  ...
+# Subtest: Inactive scope returns no documents
+ok 82 - Inactive scope returns no documents
+  ---
+  duration_ms: 0.120141
+  type: 'test'
+  ...
+# Subtest: Multi-department memberships are represented in database scope
+ok 83 - Multi-department memberships are represented in database scope
+  ---
+  duration_ms: 0.17965
+  type: 'test'
+  ...
+# Subtest: Complete valid Generation form passes validation
+ok 84 - Complete valid Generation form passes validation
+  ---
+  duration_ms: 0.345891
+  type: 'test'
+  ...
+# Subtest: Empty drafts can be represented without mandatory-field validation
+ok 85 - Empty drafts can be represented without mandatory-field validation
+  ---
+  duration_ms: 0.081273
+  type: 'test'
+  ...
+# Subtest: Required fields are enforced before submission
+ok 86 - Required fields are enforced before submission
+  ---
+  duration_ms: 0.116816
+  type: 'test'
+  ...
+# Subtest: Invalid calendar dates are rejected
+ok 87 - Invalid calendar dates are rejected
+  ---
+  duration_ms: 0.242125
+  type: 'test'
+  ...
+# Subtest: Future birthdays are rejected
+ok 88 - Future birthdays are rejected
+  ---
+  duration_ms: 0.152299
+  type: 'test'
+  ...
+# Subtest: Invalid SSN length is rejected
+ok 89 - Invalid SSN length is rejected
+  ---
+  duration_ms: 0.103506
+  type: 'test'
+  ...
+# Subtest: Medicare identifier length is checked
+ok 90 - Medicare identifier length is checked
+  ---
+  duration_ms: 0.144377
+  type: 'test'
+  ...
+# Subtest: NPI format is checked
+ok 91 - NPI format is checked
+  ---
+  duration_ms: 0.092399
+  type: 'test'
+  ...
+# Subtest: Unknown patient fields cannot be mass-assigned
+ok 92 - Unknown patient fields cannot be mass-assigned
+  ---
+  duration_ms: 0.173702
+  type: 'test'
+  ...
+# Subtest: Unknown doctor fields cannot be mass-assigned
+ok 93 - Unknown doctor fields cannot be mass-assigned
+  ---
+  duration_ms: 0.101793
+  type: 'test'
+  ...
+# Subtest: Protected workflow fields are not accepted as doctor patches
+ok 94 - Protected workflow fields are not accepted as doctor patches
+  ---
+  duration_ms: 0.106621
+  type: 'test'
+  ...
+# Subtest: Patient patches cannot include department changes
+ok 95 - Patient patches cannot include department changes
+  ---
+  duration_ms: 0.111088
+  type: 'test'
+  ...
+# Subtest: Malformed workflow versions are rejected
+ok 96 - Malformed workflow versions are rejected
+  ---
+  duration_ms: 0.129335
+  type: 'test'
+  ...
+# Subtest: Workflow input rejects extra protected properties
+ok 97 - Workflow input rejects extra protected properties
+  ---
+  duration_ms: 0.077907
+  type: 'test'
+  ...
+# Subtest: A call requires a number and outcome
+ok 98 - A call requires a number and outcome
+  ---
+  duration_ms: 0.27861
+  type: 'test'
+  ...
+# Subtest: Caller cannot forge activity agent attribution
+ok 99 - Caller cannot forge activity agent attribution
+  ---
+  duration_ms: 0.126651
+  type: 'test'
+  ...
+# Subtest: Not-verified results require a reason
+ok 100 - Not-verified results require a reason
+  ---
+  duration_ms: 0.098087
+  type: 'test'
+  ...
+# Subtest: Comment records accept only the comment field
+ok 101 - Comment records accept only the comment field
+  ---
+  duration_ms: 0.080241
+  type: 'test'
+  ...
+# Subtest: Password policy rejects weak or oversized credentials
+ok 102 - Password policy rejects weak or oversized credentials
+  ---
+  duration_ms: 0.101092
+  type: 'test'
+  ...
+# Subtest: All defined workflow actions have an explicit permission result
+ok 103 - All defined workflow actions have an explicit permission result
+  ---
+  duration_ms: 0.081423
+  type: 'test'
+  ...
+# Subtest: End-to-end pure domain lifecycle keeps the permanent ID
+ok 104 - End-to-end pure domain lifecycle keeps the permanent ID
+  ---
+  duration_ms: 0.186631
+  type: 'test'
+  ...
+# Subtest: Management cannot create directly in Management
+ok 105 - Management cannot create directly in Management
+  ---
+  duration_ms: 0.077116
+  type: 'test'
+  ...
+# (node:1441) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: Mutating API requests reject a foreign origin
+ok 106 - Mutating API requests reject a foreign origin
+  ---
+  duration_ms: 23.672654
+  type: 'test'
+  ...
+# Subtest: Mutating API requests reject missing Origin
+ok 107 - Mutating API requests reject missing Origin
+  ---
+  duration_ms: 0.269717
+  type: 'test'
+  ...
+# Subtest: Same-origin write requests pass CSRF checks
+ok 108 - Same-origin write requests pass CSRF checks
+  ---
+  duration_ms: 0.285461
+  type: 'test'
+  ...
+# Subtest: Cross-site fetch metadata cannot override same-origin validation
+ok 109 - Cross-site fetch metadata cannot override same-origin validation
+  ---
+  duration_ms: 0.254714
+  type: 'test'
+  ...
+# Subtest: Read-only requests do not require Origin
+ok 110 - Read-only requests do not require Origin
+  ---
+  duration_ms: 0.235485
+  type: 'test'
+  ...
+# Subtest: Cursor round-trip preserves timestamp and unique tie-breaker
+ok 111 - Cursor round-trip preserves timestamp and unique tie-breaker
+  ---
+  duration_ms: 0.654206
+  type: 'test'
+  ...
+# Subtest: Cursor objects cannot smuggle MongoDB operators
+ok 112 - Cursor objects cannot smuggle MongoDB operators
+  ---
+  duration_ms: 0.187052
+  type: 'test'
+  ...
+# Subtest: Oversized cursors are rejected
+ok 113 - Oversized cursors are rejected
+  ---
+  duration_ms: 0.098358
+  type: 'test'
+  ...
+# Subtest: Pagination limits are clamped and integral
+ok 114 - Pagination limits are clamped and integral
+  ---
+  duration_ms: 0.404019
+  type: 'test'
+  ...
+# Subtest: JSON body parser accepts a valid bounded body
+ok 115 - JSON body parser accepts a valid bounded body
+  ---
+  duration_ms: 1.714715
+  type: 'test'
+  ...
+# Subtest: JSON body parser rejects oversized bodies
+ok 116 - JSON body parser rejects oversized bodies
+  ---
+  duration_ms: 0.593795
+  type: 'test'
+  ...
+# Subtest: JSON body parser rejects invalid JSON
+ok 117 - JSON body parser rejects invalid JSON
+  ---
+  duration_ms: 0.319832
+  type: 'test'
+  ...
+# Subtest: JSON responses disable shared and browser caching
+ok 118 - JSON responses disable shared and browser caching
+  ---
+  duration_ms: 0.568708
+  type: 'test'
+  ...
+1..118
+# tests 118
+# suites 0
+# pass 118
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 554.759576

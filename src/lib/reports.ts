@@ -8,10 +8,17 @@ export async function reports(u: Actor, url: URL) {
     const from = url.searchParams.get("from") || new Date(Date.now() - 30 * 86400000).toISOString(), to = url.searchParams.get("to") || new Date().toISOString();
     assert(Number.isFinite(Date.parse(from)) && Number.isFinite(Date.parse(to)) && Date.parse(to) >= Date.parse(from), 400, "INVALID_DATE", "Select a valid report date range.");
     assert(Date.parse(to) - Date.parse(from) <= 366 * 86400000, 400, "RANGE_TOO_LARGE", "Choose a report range of no more than 366 days.");
-    let scope: Record<string, unknown> = {};
-    if (!isManagement(u))
-        scope = isHead(u) ? { department: { $in: u.memberships.filter(m => m.kind === "HEAD").map(m => m.department) } } : { $or: [{ actorId: u.id }, { agentId: u.id }, { generationAgentId: u.id }] };
     const c = await collections();
+    let scope: Record<string, unknown> = {}, teamKeys: Set<string> | null = null;
+    if (!isManagement(u) && isHead(u)) {
+        const headed = u.memberships.filter(m => m.kind === "HEAD").map(m => m.department);
+        const agents = await c.users.find({ memberships: { $elemMatch: { kind: "AGENT", headId: u.id } } }, { projection: { _id: 1, memberships: 1 } }).toArray();
+        teamKeys = new Set([...headed.map(d => `${u.id}:${d}`), ...agents.flatMap(a => a.memberships.filter(m => m.kind === "AGENT" && m.headId === u.id).map(m => `${a._id}:${m.department}`))]);
+        const ids = [u.id, ...agents.map(a => a._id)];
+        scope = { $or: [{ actorId: { $in: ids } }, { agentId: { $in: ids } }, { generationAgentId: { $in: ids } }] };
+    }
+    else if (!isManagement(u))
+        scope = { $or: [{ actorId: u.id }, { agentId: u.id }, { generationAgentId: u.id }] };
     const grouped = await c.events.aggregate<{
         _id: {
             actorId: string;
@@ -32,7 +39,7 @@ export async function reports(u: Actor, url: URL) {
     }>();
     function add(id: string | undefined, department: string, metric: string, n: number) {
         const uid = id || "unassigned";
-        if (!isManagement(u) && !isHead(u) && uid !== u.id)
+        if (teamKeys ? !teamKeys.has(`${uid}:${department}`) : !isManagement(u) && uid !== u.id)
             return;
         const k = `${uid}:${department}`, row = result.get(k) || { userId: uid, department, metrics: {} };
         row.metrics[metric] = (row.metrics[metric] || 0) + n;

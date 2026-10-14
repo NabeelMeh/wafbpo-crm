@@ -4,7 +4,7 @@ import type { Actor, Membership, GlobalRole, AccountStatus } from "./domain/type
 import { ACCOUNT_STATUSES, DEPARTMENTS } from "./domain/types.ts";
 import { assert } from "./domain/errors.ts";
 import { record, text, onlyKeys, passwordPolicy } from "./domain/validation.ts";
-import { isManagement, isHead, canSeeTeam, canAssignTo } from "./domain/policy.ts";
+import { isManagement, isHead, canSeeTeam, canAssignTo, activeActor } from "./domain/policy.ts";
 import { userSearchTokens } from "./search.ts";
 import { hashPassword, blind } from "./crypto.ts";
 import { audit } from "./audit.ts";
@@ -74,7 +74,7 @@ export async function saveUser(u: Actor, id: string | null, raw: unknown, key: s
         assert(!conflict, 409, "USER_EXISTS", "Username or employee ID is already in use.");
         const now = new Date().toISOString();
         const next: UserDoc = { ...(old || {}), _id: targetId, name, username, employeeId, employeeIdNormalized: employeeId.toLowerCase(), designation, deletionGranted, searchTokens: userSearchTokens(name, username, employeeId), role, memberships, accountStatus: status, enrollmentStatus, passwordHash: passwordHash || old!.passwordHash,
-            mustChangePassword: passwordHash ? true : old?.mustChangePassword || false, mfaEnabled: old?.mfaEnabled || false, sessionVersion: (old?.sessionVersion || 0) + (old ? 1 : 0), createdAt: old?.createdAt || now, updatedAt: now };
+            mustChangePassword: false, mfaEnabled: old?.mfaEnabled || false, sessionVersion: (old?.sessionVersion || 0) + (old ? 1 : 0), createdAt: old?.createdAt || now, updatedAt: now };
         if (old)
             await c.users.replaceOne({ _id: targetId }, next, { session: s });
         else
@@ -83,6 +83,34 @@ export async function saveUser(u: Actor, id: string | null, raw: unknown, key: s
         await audit(u, old ? "USER_UPDATED" : "USER_CREATED", { userId: targetId, before: old ? actor(old) : null, after: actor(next), passwordReset: !!passwordHash }, undefined, s);
         const notify = await notifyTeamChange(next, u, s);
         return { data: actor(next), notify };
+    });
+}
+const PRIVILEGED: GlobalRole[] = ["SUPER_ADMIN", "ADMIN"];
+export async function deleteUser(u: Actor, id: string, raw: unknown, key: string | null) {
+    assert(activeActor(u) && isManagement(u), 403, "FORBIDDEN", "Management access is required.");
+    const r = record(raw);
+    onlyKeys(r, ["confirmation"]);
+    assert(id !== u.id, 400, "OWN_ACCOUNT", "You cannot delete your own account.");
+    return idempotent(u, key, { operation: "delete-user", id }, async (s) => {
+        const c = await collections(), old = await c.users.findOne({ _id: id }, { session: s });
+        assert(old, 404, "NOT_FOUND", "User not found.");
+        assert(r.confirmation === old.username, 400, "CONFIRMATION_REQUIRED", "Type the exact username to confirm deletion.");
+        assert(old.role !== "SUPER_ADMIN" || u.role === "SUPER_ADMIN", 403, "FORBIDDEN", "Only a Super Admin may delete a Super Admin account.");
+        assert(!PRIVILEGED.includes(old.role) || PRIVILEGED.includes(u.role), 403, "FORBIDDEN", "Only an Admin may delete an Admin account.");
+        if (PRIVILEGED.includes(old.role)) {
+            await c.duplicateGuards.updateOne({ _id: "administration:superadmin-lock" }, { $inc: { version: 1 } }, { upsert: true, session: s });
+            assert(await c.users.countDocuments({ role: { $in: PRIVILEGED }, accountStatus: "ACTIVE", enrollmentStatus: { $ne: "NOT_ENROLLED" }, _id: { $ne: id } }, { session: s }) > 0, 409, "LAST_ADMIN", "The last active Admin cannot be deleted.");
+        }
+        assert(!(await c.users.findOne({ "memberships.headId": id }, { session: s, projection: { _id: 1 } })), 409, "USER_IS_HEAD", "Reassign this head's agents before deleting the account.");
+        // Deleting a user linked to leads would erase the original agent's identity from lead history.
+        assert(!(await c.leads.findOne({ $or: [{ createdBy: id }, { assignedTo: id }, { completedAgentId: id }] }, { session: s, projection: { _id: 1 } })), 409, "USER_HAS_RECORDS", "This user is linked to lead records. Block (suspend) the account instead so lead history keeps their identity.");
+        await c.sessions.deleteMany({ userId: id }, { session: s });
+        await c.deviceChallenges.deleteMany({ userId: id }, { session: s });
+        await c.trustedDevices.deleteMany({ userId: id }, { session: s });
+        await c.notifications.deleteMany({ userId: id }, { session: s });
+        await c.users.deleteOne({ _id: id }, { session: s });
+        await audit(u, "USER_DELETED", { userId: id, before: actor(old) }, undefined, s);
+        return { data: { ok: true, deletedId: id }, notify: [] };
     });
 }
 export async function listUsers(u: Actor) {
@@ -99,7 +127,8 @@ export async function assignees(u: Actor, department: string) {
 export async function team(u: Actor, url: URL) {
     assert(canSeeTeam(u), 403, "FORBIDDEN", "Live team status is available to Heads and Management.");
     const c = await collections(), after = url.searchParams.get("after");
-    const users = await c.users.find(after ? { _id: { $gt: after } } : {}).sort({ _id: 1 }).limit(101).toArray(), items = users.slice(0, 100), now = Date.now();
+    const ownTeam = isManagement(u) ? {} : { $or: [{ _id: u.id }, { memberships: { $elemMatch: { kind: "AGENT", headId: u.id } } }] };
+    const users = await c.users.find(after ? { ...ownTeam, _id: { $gt: after } } : ownTeam).sort({ _id: 1 }).limit(101).toArray(), items = users.slice(0, 100), now = Date.now();
     return { items: items.map(v => ({ ...actor(v), lastLoginAt: v.lastLoginAt, lastActivityAt: v.lastActivityAt,
             presence: (v.accountStatus !== "ACTIVE" || v.enrollmentStatus === "NOT_ENROLLED") ? "INACTIVE" : !v.lastSeenAt || now - Date.parse(v.lastSeenAt) > 90000 ? "OFFLINE" : v.visible === false || !v.lastActivityAt || now - Date.parse(v.lastActivityAt) > 300000 ? "AWAY" : "ONLINE" })), nextAfter: users.length > 100 ? items.at(-1)!._id : null };
 }

@@ -14,7 +14,6 @@
     "db:indexes": "tsx --env-file=.env.local scripts/indexes.ts",
     "db:admin": "tsx --env-file=.env.local scripts/create-admin.ts",
     "test:integration": "tsx --env-file=.env.test tests/integration.ts",
-    "worker:scan": "tsx --env-file=.env.local scripts/scan-files.ts",
     "secrets:generate": "node scripts/generate-secrets.mjs",
     "env:check": "node --env-file=.env.local scripts/check-env.mjs",
     "test:types": "tsc -p tsconfig.core.json",

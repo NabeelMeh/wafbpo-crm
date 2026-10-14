@@ -115,7 +115,6 @@ export async function authenticate(req: Request, allowSetup = false): Promise<{
     assert(user && user.accountStatus === "ACTIVE" && (user.enrollmentStatus || "ENROLLED") === "ENROLLED" && user.sessionVersion === session.version, 401, "SESSION_REVOKED", "Your access has changed. Sign in again or contact Management.");
     if (!allowSetup) {
         assert(!user.mfaEnabled || isManagement(actor(user)) || session.mfaVerified === true, 403, "MFA_REAUTH_REQUIRED", "MFA is now enabled. Save your recovery codes, then sign out and sign in again with a verification code.");
-        assert(!user.mustChangePassword, 403, "PASSWORD_CHANGE_REQUIRED", "Change your temporary password in Security before using the CRM.");
     }
     if (req.headers.get("x-user-activity") === "1") {
         await c.sessions.updateOne({ _id: session._id }, { $set: { lastInputAt: now, idleExpiresAt: new Date(now.getTime() + idleMs) } });

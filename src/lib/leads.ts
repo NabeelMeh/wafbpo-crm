@@ -214,6 +214,21 @@ export async function revealIdentifiers(u: Actor, id: string) {
     const p = patientOf(lead);
     return { identifier: p.identifier, memberId: p.memberId };
 }
+function queueFilter(queue: string, department: string | null): Record<string, unknown> {
+    if (queue === "complete")
+        return { department: "MANAGEMENT", status: { $in: ["MANAGEMENT_REVIEW", "FINALIZED"] } };
+    assert(["direct", "handoff", "outsourced", "incomplete"].includes(queue), 400, "INVALID_FILTER", "Invalid queue.");
+    assert(department === "CHASING" || department === "PV", 400, "INVALID_FILTER", "This queue exists only for Chasing and Patient Verification.");
+    if (queue === "incomplete")
+        return { status: "INCOMPLETE" };
+    if (queue === "outsourced")
+        return { status: { $ne: "INCOMPLETE" }, outsource: { $in: [department, "BOTH"] } };
+    // Outsourced records appear only under the Outsourced tab so a lead is never listed under two referral tabs.
+    const active = { status: { $ne: "INCOMPLETE" }, outsource: null };
+    if (queue === "direct")
+        return { ...active, origin: department };
+    return department === "CHASING" ? { ...active, origin: { $ne: "CHASING" } } : { ...active, chasingDeniedAt: { $exists: true } };
+}
 export async function buildLeadFilter(u: Actor, url: URL): Promise<Filter<LeadDoc>> {
     const parts: Record<string, unknown>[] = [leadScope(u)], department = url.searchParams.get("department"), status = url.searchParams.get("status"), q = url.searchParams.get("q")?.trim();
     if (department) {
@@ -226,10 +241,24 @@ export async function buildLeadFilter(u: Actor, url: URL): Promise<Filter<LeadDo
     }
     else if (!(url.searchParams.get("includeArchived")==="1" && isManagement(u)))
         parts.push({ status: { $ne: "ARCHIVED" } });
+    const queue = url.searchParams.get("queue");
+    if (queue)
+        parts.push(queueFilter(queue, department));
     for (const key of ["assignedTo", "campaign", "batch"] as const) {
         const value = url.searchParams.get(key);
         if (value)
             parts.push({ [key]: text(value, key, 100) });
+    }
+    const ids = url.searchParams.get("ids");
+    if (ids !== null) {
+        const list = ids.split(",").map(x => x.trim()).filter(Boolean).map(x => text(x, "Record ID", 100, true));
+        assert(list.length > 0 && list.length <= 1000, 400, "INVALID_SELECTION", "Select between 1 and 1000 records.");
+        parts.push({ _id: { $in: list } });
+    }
+    const outsource = url.searchParams.get("outsource");
+    if (outsource) {
+        assert(["NONE", "CHASING", "PV", "BOTH"].includes(outsource), 400, "INVALID_FILTER", "Invalid outsourcing filter.");
+        parts.push({ outsource: outsource === "NONE" ? null : outsource });
     }
     const head = url.searchParams.get("headId");
     if (head) {

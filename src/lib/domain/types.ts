@@ -5,6 +5,9 @@ export const DEPARTMENT_NAMES: Record<Department, string> = {
     GENERATION: "Generation Department", QA: "Q/A Department", CHASING: "Chasing Department",
     PV: "Patient Verification Department", MANAGEMENT: "Management Department"
 };
+export const OUTSOURCE_TARGETS = ["CHASING", "PV", "BOTH"] as const;
+export type OutsourceTarget = typeof OUTSOURCE_TARGETS[number];
+export const OUTSOURCE_LABELS: Record<OutsourceTarget, string> = { CHASING: "Chasing only", PV: "PV only", BOTH: "Chasing + PV" };
 export const ACCOUNT_STATUSES = ["ACTIVE", "INACTIVE", "SUSPENDED", "LOCKED", "DEACTIVATED"] as const;
 export type AccountStatus = typeof ACCOUNT_STATUSES[number];
 export type GlobalRole = "SUPER_ADMIN" | "ADMIN" | "MANAGEMENT" | "STAFF";
@@ -83,6 +86,12 @@ export interface LeadCore {
     reworkFrom?: "GENERATION" | "QA";
     completedSource?: "CHASING" | "PV";
     completedAgentId?: string | null;
+    outsource?: OutsourceTarget | null;
+    outsourcedAt?: string;
+    outsourcedBy?: string;
+    outsourceChasingDoneAt?: string;
+    outsourceChasingAgentId?: string | null;
+    outsourceHistory?: { from: OutsourceTarget | null; to: OutsourceTarget | null; fromDepartment: string; toDepartment: string; fromStatus: string; toStatus: string; previousAssignee: string | null; by: string; at: string }[];
     followUpAt?: string | null;
     campaign: string;
     batch: string;

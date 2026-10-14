@@ -24,25 +24,22 @@ Codes expire after five minutes, are single use and limited to five counted atte
 
 Create a private bucket with VERSIONING ENABLED, all public-access blocks enabled, public ACLs disabled and approved encryption/retention. Set exact-origin CORS using docs/s3-cors.example.json. Test multipart browser POST/CORS and immutable-version reads. The application uses both leads/ and branding/ prefixes. Update the IAM example's bucket name; do not grant application runtime object-delete permission.
 
-Browser uploads use short-lived signed POSTs bound to random object keys, canonical content type and exact size. Completion verifies actual object metadata and pins a version. Files remain unreadable until the separate scanner validates content and marks that exact version CLEAN. Downloads are streamed through the authenticated CRM API, rechecking record authorization rather than returning reusable public file URLs. Only the explicitly selected clean logo is intentionally public.
+Browser uploads use short-lived signed POSTs bound to random object keys, canonical content type and exact size. Completion verifies actual object metadata, pins a version, and runs built-in structural inspection on that exact version (PDF structure without JavaScript/launch/embedded-file actions; audio container signatures; image signatures for logos). Passing files become CLEAN; failing files become REJECTED and can never be opened. Lead attachments are limited to PDF and audio. Downloads are streamed through the authenticated CRM API, rechecking record authorization rather than returning reusable public file URLs. Only the explicitly selected clean logo is intentionally public.
 
 For custom S3_ENDPOINT deployments, verify versioning, presigned POST, range reads, private access and deletion semantics; compatibility is not assumed.
 
-## ClamAV worker - runs outside Vercel
+## File verification (no external scanner)
 
-Use an isolated, maintained worker host with Node dependencies installed and a real ClamAV installation. Run freshclam/signature updates through your host's approved service. The worker requires SCANNER_APP_URL, FILE_SCAN_SECRET, CLAMSCAN_PATH and, optionally, CLAMAV_MAX_SIGNATURE_AGE_HOURS (default 48). It does not need patient data keys or database credentials for scanning.
+The separate ClamAV worker, its scan API, FILE_SCAN_SECRET and the heartbeat gate have been removed. Verification is built in and runs during upload completion. It is a structural check, not antivirus signature scanning; downloads stay non-executable (attachment disposition, sandboxed CSP, nosniff).
+
+Existing deployments with files still QUARANTINED from the old scanner must run the one-time migration (dry run first):
 
 ```sh
-clamscan --version
-# Start/update freshclam using your host's supported service procedure.
-npm run worker:scan
+npx tsx --env-file=.env.local scripts/migrations/001-verify-quarantined-files.ts
+npx tsx --env-file=.env.local scripts/migrations/001-verify-quarantined-files.ts --apply
 ```
 
-Each invocation checks signature freshness, obtains at most ONE leased immutable file, performs bounded content inspection and ClamAV scanning, reports the verdict and exits. Run it repeatedly (for example every 15 seconds after completion). First run it with an empty queue to establish the heartbeat before accepting uploads. The application refuses uploads when the last heartbeat is older than five minutes. Operational errors remain quarantined and retry after the lease expires; they are never treated as clean.
-
-Example systemd unit/timer files are under deploy/. Review paths, service user, secrets permissions, ClamAV flags, resource limits and sandboxing on your host before enabling. These templates have not been run here. Do not make the scan API public without its independent bearer secret or reuse application/data keys as that secret.
-
-Alert on signature age, worker failures, stale heartbeat, growing queue, stuck leases and rejected files. One-file batches may need multiple controlled workers for the required throughput; measure it. Format inspection is a defense layer, not a substitute for maintained malware scanning and safe endpoints.
+It only changes rows still QUARANTINED with the same pinned version, writes an audit event per file and a summary to settings, and never deletes data. It is safe to re-run.
 
 ## Authorized physical deletion
 

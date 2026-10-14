@@ -20,7 +20,7 @@ const step=(u:Actor,l:LeadCore,action:Action,extra:Record<string,unknown>={})=>t
 const intake=()=>make({department:"QA",status:"QA_REVIEW",assignedTo:null});
 const claimed=()=>step(qa,intake(),"CLAIM");
 
-test("R1: neither Admin nor Management can create/import directly into PV",()=>{for(const u of [admin,mg]) assert.throws(()=>assertCreate(u,"PV"));});
+test("R1: Admin and Management may assign directly into PV",()=>{for(const u of [admin,mg]) assert.doesNotThrow(()=>assertCreate(u,"PV"));});
 test("R2: approved Chasing lead cannot be reopened into PV",()=>{const l=make({department:"MANAGEMENT",status:"MANAGEMENT_REVIEW",completedSource:"CHASING"});assert.throws(()=>step(admin,l,"REOPEN",{destination:"PV",reason:"Audit check",comment:"Synthetic"}));assert.equal(step(admin,l,"REOPEN",{reason:"Audit check",comment:"Synthetic"}).department,"CHASING");});
 test("R3: claimed QA lead remains readable to every authorized QA colleague",()=>{for(const u of [qa,other,qh,admin,mg])assert.equal(canReadLead(u,claimed()),true);});
 test("R4: no QA actor can edit unclaimed patient or doctor data",()=>{for(const u of [qa,other,qh,admin,mg]){assert.equal(canEditPatient(u,intake()),false);assert.equal(canEditDoctor(u,intake()),false);}});
@@ -62,3 +62,17 @@ test("Device cookie accepts 256-bit opaque tokens, not user input identifiers",(
 test("Device policy uses five-minute TTL and five counted attempts",()=>{assert.equal(DEVICE_CODE_TTL_MS,300000);assert.equal(DEVICE_CODE_ATTEMPTS,5);const c={attempts:5,expiresAt:new Date(1001),sessionVersion:2};assert.equal(verificationAllowed(c,2,1000),true);assert.equal(verificationAllowed({...c,attempts:6},2,1000),false);assert.equal(verificationAllowed(c,2,1001),false);assert.equal(verificationAllowed(c,3,1000),false);});
 test("Privileged scalar export contains complete unmasked identifiers and matches its header",()=>{const l:LeadDoc={...make(),doctor:{...EMPTY_DOCTOR,name:"Synthetic doctor"},patientSealed:"never exported ciphertext",searchTokens:[],duplicateKeys:[]};const p={...EMPTY_PATIENT,firstName:"Synthetic",identifier:"TEST-MEDICARE-FULL",memberId:"TEST-MEMBER-FULL"};const values=exportValues(l,p,gen,qa);assert.equal(values.length,EXPORT_COLUMNS.length);assert.equal(values[EXPORT_COLUMNS.indexOf("Medicare/SSN")],p.identifier);assert.equal(values[EXPORT_COLUMNS.indexOf("Member ID")],p.memberId);assert.equal(values[EXPORT_COLUMNS.indexOf("Created by special ID")],gen.employeeId);assert(!values.includes(l.patientSealed));});
 for(const text of ["=SUM(A1)","+CMD","-1+2","@SUM(A1)","\t=CMD"])test(`CSV formulas neutralized: ${JSON.stringify(text)}`,()=>assert.notEqual(csvSafe(text),text));
+
+test("Part 4: only Management/Admin pass the bulk-delete and outsourcing gate", () => {
+  for (const s of [gen, qa, qh, ch, pv]) assert.equal(isManagement(s), false, `${s.id} must not reach admin tools`);
+  assert.equal(isManagement(admin), true); assert.equal(isManagement(mg), true);
+});
+test("Part 4: staff without explicit grant cannot delete leads, even their own", () => {
+  const lead = make() as LeadDoc;
+  for (const s of [gen, qa, qh, ch, pv]) assert.equal(canDelete(s, lead), false);
+  assert.equal(canDelete(admin, lead), true); assert.equal(canDelete(mg, lead), true);
+});
+test("Part 4: outsourcing targets are exactly Chasing, PV, and both", async () => {
+  const { OUTSOURCE_TARGETS } = await import("../src/lib/domain/types.ts");
+  assert.deepEqual([...OUTSOURCE_TARGETS], ["CHASING", "PV", "BOTH"]);
+});

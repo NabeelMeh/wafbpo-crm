@@ -21,7 +21,8 @@ export function transition(actor:Actor,lead:LeadCore,input:WorkflowInput,now=new
         case 'PULL_BACK':out.assignedTo=null;out.claim=null;break;
         case 'DENY':if(lead.department==='CHASING'){out.chasingDeniedAt=now.toISOString();out.chasingDeniedBy=actor.id;move('PV','PV_ACTIVE');}else out.status='DENIED';break;
         case 'INCOMPLETE':out.status='INCOMPLETE';out.followUpAt=new Date(input.followUpAt!).toISOString();break;
-        case 'COMPLETE':out.completedSource=lead.department as 'CHASING'|'PV';out.completedAgentId=lead.assignedTo;move('MANAGEMENT','MANAGEMENT_REVIEW');break;
+        case 'COMPLETE':if(lead.department==='CHASING'&&lead.outsource==='BOTH'){out.outsourceChasingDoneAt=now.toISOString();out.outsourceChasingAgentId=lead.assignedTo;move('PV','PV_ACTIVE');break;}
+            out.completedSource=lead.department as 'CHASING'|'PV';out.completedAgentId=lead.assignedTo;move('MANAGEMENT','MANAGEMENT_REVIEW');break;
         case 'FINALIZE':out.status='FINALIZED';break;
         case 'ARCHIVE':out.status='ARCHIVED';out.claim=null;break;
         case 'REOPEN':{

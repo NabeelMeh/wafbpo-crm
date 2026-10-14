@@ -20,7 +20,7 @@ const step=(u:Actor,l:LeadCore,action:Action,extra:Record<string,unknown>={})=>t
 const intake=()=>make({department:"QA",status:"QA_REVIEW",assignedTo:null});
 const claimed=()=>step(qa,intake(),"CLAIM");
 
-test("R1: neither Admin nor Management can create/import directly into PV",()=>{for(const u of [admin,mg]) assert.throws(()=>assertCreate(u,"PV"));});
+test("R1: Admin and Management may assign directly into PV",()=>{for(const u of [admin,mg]) assert.doesNotThrow(()=>assertCreate(u,"PV"));});
 test("R2: approved Chasing lead cannot be reopened into PV",()=>{const l=make({department:"MANAGEMENT",status:"MANAGEMENT_REVIEW",completedSource:"CHASING"});assert.throws(()=>step(admin,l,"REOPEN",{destination:"PV",reason:"Audit check",comment:"Synthetic"}));assert.equal(step(admin,l,"REOPEN",{reason:"Audit check",comment:"Synthetic"}).department,"CHASING");});
 test("R3: claimed QA lead remains readable to every authorized QA colleague",()=>{for(const u of [qa,other,qh,admin,mg])assert.equal(canReadLead(u,claimed()),true);});
 test("R4: no QA actor can edit unclaimed patient or doctor data",()=>{for(const u of [qa,other,qh,admin,mg]){assert.equal(canEditPatient(u,intake()),false);assert.equal(canEditDoctor(u,intake()),false);}});

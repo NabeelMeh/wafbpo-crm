@@ -214,6 +214,18 @@ export async function revealIdentifiers(u: Actor, id: string) {
     const p = patientOf(lead);
     return { identifier: p.identifier, memberId: p.memberId };
 }
+function queueFilter(queue: string, department: string | null): Record<string, unknown> {
+    if (queue === "complete")
+        return { department: "MANAGEMENT", status: { $in: ["MANAGEMENT_REVIEW", "FINALIZED"] } };
+    assert(["direct", "handoff", "incomplete"].includes(queue), 400, "INVALID_FILTER", "Invalid queue.");
+    assert(department === "CHASING" || department === "PV", 400, "INVALID_FILTER", "This queue exists only for Chasing and Patient Verification.");
+    if (queue === "incomplete")
+        return { status: "INCOMPLETE" };
+    const active = { status: { $ne: "INCOMPLETE" } };
+    if (queue === "direct")
+        return { ...active, origin: department };
+    return department === "CHASING" ? { ...active, origin: { $ne: "CHASING" } } : { ...active, chasingDeniedAt: { $exists: true } };
+}
 export async function buildLeadFilter(u: Actor, url: URL): Promise<Filter<LeadDoc>> {
     const parts: Record<string, unknown>[] = [leadScope(u)], department = url.searchParams.get("department"), status = url.searchParams.get("status"), q = url.searchParams.get("q")?.trim();
     if (department) {
@@ -226,6 +238,9 @@ export async function buildLeadFilter(u: Actor, url: URL): Promise<Filter<LeadDo
     }
     else if (!(url.searchParams.get("includeArchived")==="1" && isManagement(u)))
         parts.push({ status: { $ne: "ARCHIVED" } });
+    const queue = url.searchParams.get("queue");
+    if (queue)
+        parts.push(queueFilter(queue, department));
     for (const key of ["assignedTo", "campaign", "batch"] as const) {
         const value = url.searchParams.get(key);
         if (value)

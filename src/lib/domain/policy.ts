@@ -21,10 +21,11 @@ export function assertRead(u: Actor, l: LeadCore | null): asserts l is LeadCore 
 }
 export const canSeeSecurity = (u: Actor) => isManagement(u);
 export const canReveal = (u: Actor,l: LeadCore) => canReadLead(u,l) && (isManagement(u) || ['QA','GENERATION','CHASING','PV'].includes(l.department));
+export const pvEligible = (l: LeadCore) => !!l.chasingDeniedAt || l.origin === 'PV';
 export function canEditDoctor(u: Actor,l: LeadCore,now=Date.now()): boolean {
     if (!canReadLead(u,l) || ['ARCHIVED','FINALIZED','DENIED','MIGRATION_REVIEW'].includes(l.status)) return false;
     if (l.department === 'QA') return l.status === 'QA_REVIEW' && ownsClaim(u,l,now);
-    if (l.department === 'PV' && !l.chasingDeniedAt) return false;
+    if (l.department === 'PV' && !pvEligible(l)) return false;
     return isManagement(u) || inDepartment(u,l.department);
 }
 export function canEditPatient(u: Actor,l: LeadCore,now=Date.now()): boolean {
@@ -39,7 +40,7 @@ export function assertEdit(u:Actor,l:LeadCore,patch:{patient?:Partial<Patient>;d
 export const canDelete = (u:Actor,l:LeadCore) => canReadLead(u,l) && (isManagement(u) || u.deletionGranted === true);
 export function assertCreate(u:Actor,d:WorkDepartment) {
     assert(activeActor(u),403,'FORBIDDEN','Account is not enrolled and active.');
-    assert(d === 'GENERATION' || d === 'CHASING',400,'INVALID_DEPARTMENT','Records may start in Generation; Management can import raw Chasing datasets. Patient Verification accepts only Chasing denials.');
+    assert(d === 'GENERATION' || d === 'CHASING' || d === 'PV',400,'INVALID_DEPARTMENT','Records may start in Generation; Management can import raw Chasing or Patient Verification datasets.');
     assert(isManagement(u) || (d === 'GENERATION' && inDepartment(u,'GENERATION')),403,'FORBIDDEN','Only Generation staff or Management may create leads.');
 }
 export function leadScope(u:Actor,department?:Department):Record<string,unknown> {
@@ -61,8 +62,8 @@ export function canAssignTo(actor:Actor,target:Actor,department:Department):bool
 }
 export function reopenDestination(l:LeadCore):WorkDepartment {
     if(l.legacyRoutingReview) return 'CHASING';
-    if(l.completedSource==='PV'&&l.chasingDeniedAt) return 'PV';
-    if(l.department==='PV'&&l.chasingDeniedAt) return 'PV';
+    if(l.completedSource==='PV'&&pvEligible(l)) return 'PV';
+    if(l.department==='PV'&&pvEligible(l)) return 'PV';
     if(l.department==='GENERATION'||l.department==='QA') return l.department;
     return 'CHASING';
 }
@@ -77,7 +78,8 @@ export function actionVisible(u:Actor,l:LeadCore,action:Action,now=Date.now()):b
         case 'RELEASE':return qa&&!!l.claim&&(l.claim.userId===u.id||head);
         case 'RESUBMIT':return l.department==='GENERATION'&&l.status==='REWORK_REQUIRED'&&(l.createdBy===u.id||head);
         case 'ASSIGN':case 'PULL_BACK':return head&&l.department!=='MANAGEMENT'&&!claimIsActive(l,now)&&!['DRAFT','ARCHIVED','FINALIZED','DENIED','MIGRATION_REVIEW'].includes(l.status)&&(action==='ASSIGN'||!!l.assignedTo);
-        case 'DENY':case 'INCOMPLETE':case 'COMPLETE':return head&&(l.department==='CHASING'||(l.department==='PV'&&!!l.chasingDeniedAt))&&['CHASING_ACTIVE','PV_ACTIVE','INCOMPLETE'].includes(l.status);
+        case 'DENY':return head&&l.department==='CHASING'&&['CHASING_ACTIVE','INCOMPLETE'].includes(l.status);
+        case 'INCOMPLETE':case 'COMPLETE':return head&&(l.department==='CHASING'||(l.department==='PV'&&pvEligible(l)))&&['CHASING_ACTIVE','PV_ACTIVE','INCOMPLETE'].includes(l.status);
         case 'FINALIZE':return mg&&l.status==='MANAGEMENT_REVIEW';
         case 'REOPEN':return mg&&['DENIED','INCOMPLETE','MANAGEMENT_REVIEW','FINALIZED','ARCHIVED','MIGRATION_REVIEW'].includes(l.status);
         case 'ARCHIVE':return mg&&!['ARCHIVED','DRAFT'].includes(l.status)&&!claimIsActive(l,now);

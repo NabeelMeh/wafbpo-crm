@@ -246,6 +246,15 @@ export async function buildLeadFilter(u: Actor, url: URL): Promise<Filter<LeadDo
         if (value)
             parts.push({ [key]: text(value, key, 100) });
     }
+    const ids = url.searchParams.get("ids");
+    if (ids !== null) {
+        const list = ids.split(",").map(x => x.trim()).filter(Boolean).map(x => text(x, "Record ID", 100, true));
+        assert(list.length > 0 && list.length <= 1000, 400, "INVALID_SELECTION", "Select between 1 and 1000 records.");
+        parts.push({ _id: { $in: list } });
+    }
+    const outsource = url.searchParams.get("outsource");
+    if (outsource)
+        parts.push({ outsource: outsource === "NONE" ? null : text(outsource, "Outsource", 10) });
     const head = url.searchParams.get("headId");
     if (head) {
         const users = await (await collections()).users.find({ "memberships.headId": head }, { projection: { _id: 1 } }).limit(2000).toArray();

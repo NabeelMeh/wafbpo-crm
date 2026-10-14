@@ -4,13 +4,14 @@ import { actor } from "./db.ts";
 import { authenticate, login, verifyDevice, logout, heartbeat, changePassword, mfaBegin, mfaConfirm, mfaDisable, rateLimit } from "./auth.ts";
 import { createLead, getLead, leadView, editLead, applyWorkflow, bulkWorkflow, addActivity, revealIdentifiers, listLeads, leadHistory, leadActivities, dashboard } from "./leads.ts";
 import { listNotifications, claimNotification, acknowledgeNotification, ablyTokenRequest } from "./notifications.ts";
-import { saveUser, listUsers, assignees, team } from "./users.ts";
+import { saveUser, deleteUser, listUsers, assignees, team } from "./users.ts";
 import { reports, auditLog, monthlyLeadStatistics } from "./reports.ts";
 import { beginUpload, completeUpload, listFiles, downloadFile, scannerAuth, scanQueue, scanResult, fileContent, publicLogo, deleteFile } from "./storage.ts";
 import { createImport, importChunk, finishImport, listImports, importErrors } from "./imports.ts";
 import { publicBranding, getSettings, saveSettings, listDevices, revokeDevice } from "./settings.ts";
 import { securityActivity } from "./security-events.ts";
-import { deleteLead } from "./deletion.ts";
+import { deleteLead, bulkDeleteLeads } from "./deletion.ts";
+import { outsourceLeads } from "./outsourcing.ts";
 import { exportLeads } from "./export.ts";
 export async function handle(req: Request): Promise<Response> {
     try {
@@ -68,6 +69,10 @@ export async function handle(req: Request): Promise<Response> {
             return exportLeads(u, url);
         if (path === "leads/bulk" && method === "POST")
             return json(await bulkWorkflow(u, await body(req), key));
+        if (path === "leads/bulk-delete" && method === "POST")
+            return json(await bulkDeleteLeads(u, await body(req), key));
+        if (path === "leads/outsource" && method === "POST")
+            return json(await outsourceLeads(u, await body(req), key));
         if (path === "leads") {
             if (method === "GET")
                 return json(await listLeads(u, url));
@@ -122,6 +127,8 @@ export async function handle(req: Request): Promise<Response> {
             return json(await saveUser(u, null, await body(req, 32768), key), 201);
         if (segments[0] === "users" && segments.length === 2 && method === "PATCH")
             return json(await saveUser(u, segments[1], await body(req, 32768), key));
+        if (segments[0] === "users" && segments.length === 2 && method === "DELETE")
+            return json(await deleteUser(u, segments[1], await body(req, 8192), key));
         if (path === "reports" && method === "GET")
             return json(await reports(u, url));
         if (path === "reports/monthly" && method === "GET")

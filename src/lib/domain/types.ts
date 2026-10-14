@@ -89,6 +89,9 @@ export interface LeadCore {
     outsource?: OutsourceTarget | null;
     outsourcedAt?: string;
     outsourcedBy?: string;
+    outsourceChasingDoneAt?: string;
+    outsourceChasingAgentId?: string | null;
+    outsourceHistory?: { from: OutsourceTarget | null; to: OutsourceTarget | null; fromDepartment: string; toDepartment: string; fromStatus: string; toStatus: string; previousAssignee: string | null; by: string; at: string }[];
     followUpAt?: string | null;
     campaign: string;
     batch: string;

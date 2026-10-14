@@ -217,11 +217,14 @@ export async function revealIdentifiers(u: Actor, id: string) {
 function queueFilter(queue: string, department: string | null): Record<string, unknown> {
     if (queue === "complete")
         return { department: "MANAGEMENT", status: { $in: ["MANAGEMENT_REVIEW", "FINALIZED"] } };
-    assert(["direct", "handoff", "incomplete"].includes(queue), 400, "INVALID_FILTER", "Invalid queue.");
+    assert(["direct", "handoff", "outsourced", "incomplete"].includes(queue), 400, "INVALID_FILTER", "Invalid queue.");
     assert(department === "CHASING" || department === "PV", 400, "INVALID_FILTER", "This queue exists only for Chasing and Patient Verification.");
     if (queue === "incomplete")
         return { status: "INCOMPLETE" };
-    const active = { status: { $ne: "INCOMPLETE" } };
+    if (queue === "outsourced")
+        return { status: { $ne: "INCOMPLETE" }, outsource: { $in: [department, "BOTH"] } };
+    // Outsourced records appear only under the Outsourced tab so a lead is never listed under two referral tabs.
+    const active = { status: { $ne: "INCOMPLETE" }, outsource: null };
     if (queue === "direct")
         return { ...active, origin: department };
     return department === "CHASING" ? { ...active, origin: { $ne: "CHASING" } } : { ...active, chasingDeniedAt: { $exists: true } };
@@ -253,8 +256,10 @@ export async function buildLeadFilter(u: Actor, url: URL): Promise<Filter<LeadDo
         parts.push({ _id: { $in: list } });
     }
     const outsource = url.searchParams.get("outsource");
-    if (outsource)
-        parts.push({ outsource: outsource === "NONE" ? null : text(outsource, "Outsource", 10) });
+    if (outsource) {
+        assert(["NONE", "CHASING", "PV", "BOTH"].includes(outsource), 400, "INVALID_FILTER", "Invalid outsourcing filter.");
+        parts.push({ outsource: outsource === "NONE" ? null : outsource });
+    }
     const head = url.searchParams.get("headId");
     if (head) {
         const users = await (await collections()).users.find({ "memberships.headId": head }, { projection: { _id: 1 } }).limit(2000).toArray();

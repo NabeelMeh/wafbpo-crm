@@ -21,7 +21,7 @@ export function assertRead(u: Actor, l: LeadCore | null): asserts l is LeadCore 
 }
 export const canSeeSecurity = (u: Actor) => isManagement(u);
 export const canReveal = (u: Actor,l: LeadCore) => canReadLead(u,l) && (isManagement(u) || ['QA','GENERATION','CHASING','PV'].includes(l.department));
-export const pvEligible = (l: LeadCore) => !!l.chasingDeniedAt || l.origin === 'PV';
+export const pvEligible = (l: LeadCore) => !!l.chasingDeniedAt || l.origin === 'PV' || l.outsource === 'PV' || (l.outsource === 'BOTH' && !!l.outsourceChasingDoneAt);
 export function canEditDoctor(u: Actor,l: LeadCore,now=Date.now()): boolean {
     if (!canReadLead(u,l) || ['ARCHIVED','FINALIZED','DENIED','MIGRATION_REVIEW'].includes(l.status)) return false;
     if (l.department === 'QA') return l.status === 'QA_REVIEW' && ownsClaim(u,l,now);

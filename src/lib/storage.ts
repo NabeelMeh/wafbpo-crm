@@ -4,7 +4,7 @@ import {createPresignedPost} from '@aws-sdk/s3-presigned-post';
 import type {ClientSession} from 'mongodb';
 import {collections,transaction,type FileDoc} from './db.ts';
 import type {Actor,LeadDoc} from './domain/types.ts';
-import {assert} from './domain/errors.ts';
+import {assert,AppError} from './domain/errors.ts';
 import {record,text,onlyKeys} from './domain/validation.ts';
 import {canEditDoctor,isManagement,canDelete} from './domain/policy.ts';
 import {validateFileMetadata,assertLeadAttachment} from './domain/file-policy.ts';
@@ -12,7 +12,22 @@ import {inspectFile} from './file-inspection.ts';
 import {getLead,idempotent} from './leads.ts';
 import {audit} from './audit.ts';
 let instance:S3Client|undefined;
-export function fileStore(){assert(process.env.S3_BUCKET,503,'STORAGE_NOT_CONFIGURED','Private storage is not configured. Contact Management.');if(!instance)instance=new S3Client({region:process.env.AWS_REGION||'us-east-1',...(process.env.S3_ENDPOINT?{endpoint:process.env.S3_ENDPOINT,forcePathStyle:true}:{})});return {s3:instance,bucket:process.env.S3_BUCKET};}
+// Provider errors (missing credentials, AccessDenied, NoSuchBucket, network) become a safe 503 instead of an opaque 500; only the error name is logged.
+function storageFailure(e:unknown):never{
+ if(e instanceof AppError)throw e;
+ const name=e instanceof Error?e.name:'UnknownError';
+ if(name==='NoSuchKey'||name==='NotFound')throw new AppError(404,'NOT_FOUND','The stored object was not found.');
+ console.error(JSON.stringify({level:'error',type:'STORAGE_ERROR',name}));
+ throw new AppError(503,'STORAGE_UNAVAILABLE','Private storage is unavailable. Contact Management.');
+}
+export function fileStore(){
+ assert(process.env.S3_BUCKET&&process.env.AWS_REGION,503,'STORAGE_NOT_CONFIGURED','Private storage is not configured. Contact Management.');
+ assert(!process.env.AWS_ACCESS_KEY_ID===!process.env.AWS_SECRET_ACCESS_KEY,503,'STORAGE_NOT_CONFIGURED','Private storage credentials are incomplete. Contact Management.');
+ if(!instance)instance=new S3Client({region:process.env.AWS_REGION,...(process.env.S3_ENDPOINT?{endpoint:process.env.S3_ENDPOINT,forcePathStyle:true}:{})});
+ const client=instance;
+ const s3={send:(<T extends Parameters<S3Client['send']>[0]>(command:T)=>client.send(command as never).catch(storageFailure)) as S3Client['send']};
+ return {s3,client,bucket:process.env.S3_BUCKET};
+}
 async function writable(u:Actor,leadId:string,s?:ClientSession):Promise<LeadDoc|undefined>{
  if(leadId==='__branding__'){assert(isManagement(u),403,'FORBIDDEN','Only Management/Admin can upload logos.');return undefined;}
  const lead=await getLead(u,leadId,s);assert(canEditDoctor(u,lead),403,'FORBIDDEN','The record must be editable, and Q/A work must be claimed.');return lead;
@@ -30,7 +45,7 @@ export async function beginUpload(u:Actor,leadId:string,raw:unknown,key:string|n
  const meta=validateFileMetadata(text(r.name,'File name',180,true),text(r.type,'Content type',150),Number(r.size),leadId==='__branding__');
  if(leadId!=='__branding__')assertLeadAttachment(meta.kind);
  await writable(u,leadId);
- const c=await collections(),{s3,bucket}=fileStore(),versioning=await s3.send(new GetBucketVersioningCommand({Bucket:bucket}));
+ const c=await collections(),{s3,client,bucket}=fileStore(),versioning=await s3.send(new GetBucketVersioningCommand({Bucket:bucket}));
  assert(versioning.Status==='Enabled',503,'VERSIONING_REQUIRED','Private storage must have object versioning enabled.');
  const result=await idempotent(u,key,{leadId,raw},async s=>{
   const lead=await writable(u,leadId,s);await lockLead(lead,s);
@@ -39,7 +54,7 @@ export async function beginUpload(u:Actor,leadId:string,raw:unknown,key:string|n
   return {data:{id:file._id},notify:[]};
  });
  const file=await c.files.findOne({_id:result.id,status:'PENDING',uploadedBy:u.id});assert(file,409,'UPLOAD_ALREADY_FINISHED','This upload was already completed or removed.');await writable(u,leadId);
- const post=await createPresignedPost(s3,{Bucket:bucket,Key:file.key,Expires:300,Fields:{'Content-Type':meta.type},Conditions:[['content-length-range',meta.size,meta.size],['eq','$Content-Type',meta.type]]});
+ const post=await createPresignedPost(client,{Bucket:bucket,Key:file.key,Expires:300,Fields:{'Content-Type':meta.type},Conditions:[['content-length-range',meta.size,meta.size],['eq','$Content-Type',meta.type]]});
  return {fileId:file._id,url:post.url,fields:post.fields};
 }
 export async function completeUpload(u:Actor,id:string){

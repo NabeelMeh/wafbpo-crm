@@ -9,7 +9,7 @@ import {idempotent} from './leads.ts';
 export const BRAND_NAME='Cloud Nest BPO';
 export async function securityEmail():Promise<string>{const row=await (await collections()).settings.findOne({_id:'security-email'});return row?unseal<string>(row.value as string,'setting:security-email'):(process.env.SECURITY_EMAIL||'cloudnestbpo@gmail.com');}
 export async function publicBranding(){const row=await (await collections()).settings.findOne({_id:'branding'});const value=row?.value as {logoFileId?:string}|undefined;return {name:BRAND_NAME,logoUrl:value?.logoFileId?`/api/branding/logo?revision=${encodeURIComponent(row!.updatedAt)}`:null,revision:row?.updatedAt||'default'};}
-export async function getSettings(u:Actor){assert(isManagement(u),403,'FORBIDDEN','Management/Admin access is required.');return {branding:await publicBranding(),securityEmail:await securityEmail(),emailConfigured:!!(process.env.SMTP_HOST&&process.env.SMTP_USER&&process.env.SMTP_PASSWORD&&process.env.SMTP_FROM),storageConfigured:!!process.env.S3_BUCKET};}
+export async function getSettings(u:Actor){assert(isManagement(u),403,'FORBIDDEN','Management/Admin access is required.');return {branding:await publicBranding(),securityEmail:await securityEmail(),emailConfigured:!!(process.env.SMTP_HOST&&process.env.SMTP_USER&&process.env.SMTP_PASSWORD&&process.env.SMTP_FROM),storageConfigured:!!(process.env.S3_BUCKET&&process.env.AWS_REGION)};}
 export async function saveSettings(u:Actor,raw:unknown,key:string|null){
  assert(isManagement(u),403,'FORBIDDEN','Management/Admin access is required.');const r=record(raw);onlyKeys(r,['securityEmail','logoFileId']);
  const email=r.securityEmail===undefined?undefined:text(r.securityEmail,'Security email',254,true);

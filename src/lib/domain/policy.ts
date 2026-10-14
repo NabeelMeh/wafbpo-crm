@@ -19,7 +19,8 @@ export function canReadLead(u: Actor, l: LeadCore): boolean {
 export function assertRead(u: Actor, l: LeadCore | null): asserts l is LeadCore {
     assert(l && canReadLead(u,l),404,'NOT_FOUND','Record not found or no longer in your authorized queue.');
 }
-export const canReveal = (u: Actor,l: LeadCore) => canReadLead(u,l) && (isManagement(u) || ['QA','GENERATION'].includes(l.department));
+export const canSeeSecurity = (u: Actor) => isManagement(u);
+export const canReveal = (u: Actor,l: LeadCore) => canReadLead(u,l) && (isManagement(u) || ['QA','GENERATION','CHASING','PV'].includes(l.department));
 export function canEditDoctor(u: Actor,l: LeadCore,now=Date.now()): boolean {
     if (!canReadLead(u,l) || ['ARCHIVED','FINALIZED','DENIED','MIGRATION_REVIEW'].includes(l.status)) return false;
     if (l.department === 'QA') return l.status === 'QA_REVIEW' && ownsClaim(u,l,now);
@@ -28,7 +29,7 @@ export function canEditDoctor(u: Actor,l: LeadCore,now=Date.now()): boolean {
 }
 export function canEditPatient(u: Actor,l: LeadCore,now=Date.now()): boolean {
     if (!canEditDoctor(u,l,now)) return false;
-    return isManagement(u) || l.department === 'QA' || (l.department === 'GENERATION' && ['DRAFT','REWORK_REQUIRED','GENERATION_REVIEW'].includes(l.status) && (l.createdBy === u.id || isHead(u,'GENERATION')));
+    return isManagement(u) || ['QA','CHASING','PV'].includes(l.department) || (l.department === 'GENERATION' && ['DRAFT','REWORK_REQUIRED','GENERATION_REVIEW'].includes(l.status) && (l.createdBy === u.id || isHead(u,'GENERATION')));
 }
 export function assertEdit(u:Actor,l:LeadCore,patch:{patient?:Partial<Patient>;doctor?:Partial<Doctor>}) {
     assertRead(u,l);

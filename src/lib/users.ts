@@ -74,7 +74,7 @@ export async function saveUser(u: Actor, id: string | null, raw: unknown, key: s
         assert(!conflict, 409, "USER_EXISTS", "Username or employee ID is already in use.");
         const now = new Date().toISOString();
         const next: UserDoc = { ...(old || {}), _id: targetId, name, username, employeeId, employeeIdNormalized: employeeId.toLowerCase(), designation, deletionGranted, searchTokens: userSearchTokens(name, username, employeeId), role, memberships, accountStatus: status, enrollmentStatus, passwordHash: passwordHash || old!.passwordHash,
-            mustChangePassword: passwordHash ? true : old?.mustChangePassword || false, mfaEnabled: old?.mfaEnabled || false, sessionVersion: (old?.sessionVersion || 0) + (old ? 1 : 0), createdAt: old?.createdAt || now, updatedAt: now };
+            mustChangePassword: false, mfaEnabled: old?.mfaEnabled || false, sessionVersion: (old?.sessionVersion || 0) + (old ? 1 : 0), createdAt: old?.createdAt || now, updatedAt: now };
         if (old)
             await c.users.replaceOne({ _id: targetId }, next, { session: s });
         else
@@ -99,7 +99,8 @@ export async function assignees(u: Actor, department: string) {
 export async function team(u: Actor, url: URL) {
     assert(canSeeTeam(u), 403, "FORBIDDEN", "Live team status is available to Heads and Management.");
     const c = await collections(), after = url.searchParams.get("after");
-    const users = await c.users.find(after ? { _id: { $gt: after } } : {}).sort({ _id: 1 }).limit(101).toArray(), items = users.slice(0, 100), now = Date.now();
+    const ownTeam = isManagement(u) ? {} : { $or: [{ _id: u.id }, { memberships: { $elemMatch: { kind: "AGENT", headId: u.id } } }] };
+    const users = await c.users.find(after ? { ...ownTeam, _id: { $gt: after } } : ownTeam).sort({ _id: 1 }).limit(101).toArray(), items = users.slice(0, 100), now = Date.now();
     return { items: items.map(v => ({ ...actor(v), lastLoginAt: v.lastLoginAt, lastActivityAt: v.lastActivityAt,
             presence: (v.accountStatus !== "ACTIVE" || v.enrollmentStatus === "NOT_ENROLLED") ? "INACTIVE" : !v.lastSeenAt || now - Date.parse(v.lastSeenAt) > 90000 ? "OFFLINE" : v.visible === false || !v.lastActivityAt || now - Date.parse(v.lastActivityAt) > 300000 ? "AWAY" : "ONLINE" })), nextAfter: users.length > 100 ? items.at(-1)!._id : null };
 }

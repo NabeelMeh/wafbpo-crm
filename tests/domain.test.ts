@@ -32,9 +32,11 @@ test("All Heads have team status access", () => {
 test("Agents do not get the cross-department team view", () => assert.equal(canSeeTeam(gen), false));
 test("Cross-department team visibility does not grant lead access", () => assert.equal(canReadLead(gh, lead({ department: "PV", status: "PV_ACTIVE", assignedTo: pa.id })), false));
 test("A Chasing agent may edit doctor fields", () => assert.equal(canEditDoctor(ca, lead({ department: "CHASING", status: "CHASING_ACTIVE", assignedTo: ca.id })), true));
-test("A Chasing agent may not edit patient or brace fields", () => assert.equal(canEditPatient(ca, lead({ department: "CHASING", status: "CHASING_ACTIVE", assignedTo: ca.id })), false));
-test("A Chasing agent may not reveal identifiers", () => assert.equal(canReveal(ca, lead({ department: "CHASING", status: "CHASING_ACTIVE", assignedTo: ca.id })), false));
-test("A PV agent may not edit patient fields", () => assert.equal(canEditPatient(pa, lead({ department: "PV", status: "PV_ACTIVE", assignedTo: pa.id })), false));
+test("An assigned Chasing agent may edit patient fields", () => assert.equal(canEditPatient(ca, lead({ department: "CHASING", status: "CHASING_ACTIVE", assignedTo: ca.id })), true));
+test("An assigned Chasing agent may reveal identifiers", () => assert.equal(canReveal(ca, lead({ department: "CHASING", status: "CHASING_ACTIVE", assignedTo: ca.id })), true));
+test("A Chasing agent may not edit another agent's lead", () => assert.equal(canEditPatient(ca, lead({ department: "CHASING", status: "CHASING_ACTIVE", assignedTo: "someone-else" })), false));
+test("A PV agent may not edit a PV lead that was not denied by Chasing", () => assert.equal(canEditPatient(pa, lead({ department: "PV", status: "PV_ACTIVE", assignedTo: pa.id })), false));
+test("A PV agent may edit a Chasing-denied PV lead", () => assert.equal(canEditPatient(pa, lead({ department: "PV", status: "PV_ACTIVE", assignedTo: pa.id, chasingDeniedAt: new Date().toISOString() })), true));
 test("Finalized records are not editable even by Management", () => assert.equal(canEditDoctor(admin, lead({ department: "MANAGEMENT", status: "FINALIZED" })), false));
 test("Staff cannot read archived records", () => assert.equal(canReadLead(gh, lead({ status: "ARCHIVED" })), false));
 test("Direct PV intake is blocked for everyone", () => { assert.throws(() => assertCreate(gen, "PV")); assert.throws(() => assertCreate(admin, "PV")); });

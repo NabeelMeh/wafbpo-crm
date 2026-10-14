@@ -127,8 +127,6 @@ export function AppProvider({ children }: {
                     await request("presence", { body: { lastInputAt: lastInput.current, visible: true } });
                     heartbeatAt = Date.now();
                 }
-                if (user.mustChangePassword)
-                    return;
                 const data = await request<{
                     items: NotificationView[];
                     unread: number;
@@ -181,7 +179,7 @@ export function AppProvider({ children }: {
         return () => { stopped = true; clearTimeout(timer); window.removeEventListener("waf:notification-hint", wake); document.removeEventListener("visibilitychange", wake); };
     }, [user?.id, user?.mustChangePassword, pathname, sound, beep, push, refresh]);
     useEffect(() => {
-        if (!user || !realtimeEnabled || user.mustChangePassword)
+        if (!user || !realtimeEnabled)
             return;
         let stopped = false, close: (() => void) | undefined;
         void import("ably").then(Ably => {

@@ -10,7 +10,7 @@ export default function Login() {
     const router = useRouter(), app = useApp(), [username, setUsername] = useState(""), [password, setPassword] = useState(""), [otp, setOtp] = useState(""), [needOtp, setNeedOtp] = useState(false), [visible, setVisible] = useState(false), [challenge,setChallenge]=useState<string|null>(null), [deviceCode,setDeviceCode]=useState(""), [busy, setBusy] = useState(false), [error, setError] = useState<unknown>(null);
     useEffect(() => {
         if (app.user)
-            router.replace(app.user.mustChangePassword ? "/settings" : "/dashboard");
+            router.replace("/dashboard");
     }, [app.user, router]);
     async function submit(e: React.FormEvent) {
         e.preventDefault();

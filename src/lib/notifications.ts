@@ -7,7 +7,9 @@ import { assert } from "./domain/errors.ts";
 export async function recipientIds(lead: LeadCore, session?: ClientSession): Promise<string[]> {
     const c = await collections();
     const users = await c.users.find({ accountStatus: "ACTIVE", enrollmentStatus: { $ne: "NOT_ENROLLED" }, ...(lead.department === "MANAGEMENT" ? { role: { $in: ["SUPER_ADMIN", "ADMIN", "MANAGEMENT"] } } : { $or: [{ _id: lead.assignedTo ?? "" }, { memberships: { $elemMatch: { department: lead.department, ...(lead.department === "QA" ? {} : { kind: "HEAD" }) } } }] }) }, { session }).toArray();
-    return users.filter(u => lead.department === "MANAGEMENT" ? isManagement(actor(u)) : (u._id === lead.assignedTo || isHead(actor(u), lead.department) || (lead.department === "QA" && u.memberships.some(m=>m.department==="QA")))).map(u => u._id);
+    const assignee = lead.assignedTo ? await c.users.findOne({ _id: lead.assignedTo }, { session, projection: { memberships: 1 } }) : null;
+    const teamHeadId = assignee?.memberships.find(m => m.department === lead.department && m.kind === "AGENT")?.headId;
+    return users.filter(u => lead.department === "MANAGEMENT" ? isManagement(actor(u)) : (u._id === lead.assignedTo || (isHead(actor(u), lead.department) && (!teamHeadId || u._id === teamHeadId)) || (lead.department === "QA" && u.memberships.some(m=>m.department==="QA")))).map(u => u._id);
 }
 export async function insertNotifications(ids: string[], eventId: string, title: string, body: string, lead?: LeadCore, count = 1, session?: ClientSession) {
     const c = await collections();
@@ -55,6 +57,6 @@ export async function acknowledgeNotification(u: Actor, id: string) {
     return { ok: true };
 }
 export async function notifyTeamChange(changed: UserDoc, by: Actor, session?: ClientSession) {
-    const c = await collections(), users = await c.users.find({ accountStatus: "ACTIVE", enrollmentStatus: { $ne: "NOT_ENROLLED" }, $or: [{ role: { $in: ["SUPER_ADMIN", "ADMIN", "MANAGEMENT"] } }, { "memberships.kind": "HEAD" }] }, { session }).toArray();
+    const c = await collections(), users = await c.users.find({ accountStatus: "ACTIVE", enrollmentStatus: { $ne: "NOT_ENROLLED" }, $or: [{ role: { $in: ["SUPER_ADMIN", "ADMIN", "MANAGEMENT"] } }, { _id: { $in: changed.memberships.flatMap(m => m.kind === "AGENT" && m.headId ? [m.headId] : []) } }] }, { session }).toArray();
     return insertNotifications(users.map(u => u._id), randomUUID(), "Team account updated", `${changed.name}: ${changed.accountStatus.toLowerCase()}. Updated by ${by.name}.`, undefined, 1, session);
 }
